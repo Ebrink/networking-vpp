@@ -13,9 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import sqlalchemy as sa
 
 from networking_vpp.compat import model_base
+from neutron.objects import base
+from oslo_versionedobjects import fields as obj_fields
+import sqlalchemy as sa
 
 
 class VppEtcdJournal(model_base.BASEV2):
@@ -51,7 +53,7 @@ class VppRouterVrf(model_base.BASEV2):
     vrf_id = sa.Column(sa.Integer, nullable=False)
 
 
-class GpeAllocation(model_base.BASEV2):
+class GpeAllocationModel(model_base.BASEV2):
 
     __tablename__ = 'vpp_gpe_allocations'
 
@@ -59,3 +61,21 @@ class GpeAllocation(model_base.BASEV2):
                         autoincrement=False)
     allocated = sa.Column(sa.Boolean, nullable=False, default=False,
                           index=True)
+
+
+# Required by Train and above
+@base.NeutronObjectRegistry.register
+class GpeAllocation(base.NeutronDbObject):
+    # Version 1.0: Initial version
+    VERSION = '1.0'
+
+    db_model = GpeAllocationModel
+
+    primary_keys = ['gpe_vni']
+
+    fields = {
+        'gpe_vni': obj_fields.IntegerField(),
+        'allocated': obj_fields.BooleanField(default=False),
+    }
+
+    network_type = 'gpe'
