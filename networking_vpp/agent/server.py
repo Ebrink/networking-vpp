@@ -1214,6 +1214,11 @@ class VPPForwarder(object):
             self.gpe.delete_local_gpe_mapping(seg_id, mac)
 
         if props['bind_type'] == 'vhostuser':
+            # Delete port from vpp_acl map if present
+            if iface_idx in self.port_vpp_acls:
+                self.remove_acls_on_port(iface_idx)
+                self.remove_mac_ip_acl_on_port(iface_idx)
+                del self.port_vpp_acls[iface_idx]
             # remove port from bridge (sets to l3 mode) prior to deletion
             self.vpp.delete_from_bridge(iface_idx)
             # If it is a subport of a trunk port then delete the corresponding
@@ -1223,9 +1228,6 @@ class VPPForwarder(object):
                 self.vpp.delete_vhostuser(iface_idx)
             else:
                 self.vpp.delete_vlan_subif(iface_idx)
-            # Delete port from vpp_acl map if present
-            if iface_idx in self.port_vpp_acls:
-                del self.port_vpp_acls[iface_idx]
             # This interface is no longer connected if it's deleted
             # RACE, as we may call unbind BEFORE the vhost user
             # interface is notified as connected to qemu
@@ -1707,6 +1709,7 @@ class VPPForwarder(object):
         try:
             l2_acl_index = self.port_vpp_acls[sw_if_index]['l23']
             self.vpp.delete_macip_acl_on_interface(sw_if_index, l2_acl_index)
+            self.vpp.delete_macip_acl(l2_acl_index)
             del self.port_vpp_acls[sw_if_index]['l23']
         except KeyError:
             LOG.debug("No mac_ip ACLs are set on interface %s.. nothing "
