@@ -77,6 +77,8 @@ function configure_networking_vpp {
     else
        iniset /$Q_PLUGIN_CONF_FILE ml2_vpp jwt_signing  False
     fi
+    iniset /$Q_PLUGIN_CONF_FILE ml2_vpp esp_src_cidr $ESP_SRC_CIDR
+    iniset /$Q_PLUGIN_CONF_FILE ml2_vpp esp_physnet $ESP_PHYSNET
 
 }
 
