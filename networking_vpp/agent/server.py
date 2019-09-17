@@ -2116,39 +2116,66 @@ class VPPForwarder(object):
                     # crash - Similar to the CLI command
                     # ip route add table <int-vrf> 0.0.0.0/0 via <next-hop-ip>
                     #                                    <next-hop-sw-indx>
-                    self.vpp.add_ip_route(
-                        vrf=int_vrf,
-                        ip_address=self._pack_address(default_gw_ip),
-                        prefixlen=0,
-                        next_hop_address=self._pack_address(
-                            external_gateway_ip),
-                        next_hop_sw_if_index=gw_port['bvi_if_idx'],
-                        is_ipv6=is_ipv6)
+                    #
+                    # Note(onong): Do not set IPv6 default gateway to an IPv4
+                    # external gateway
+                    ext_ip = ipaddr(external_gateway_ip)
+                    if (is_ipv6 and not isinstance(ext_ip,
+                                                   ipaddress.IPv6Address)):
+                        LOG.info('Not setting IPv6 default route via an IPv4'
+                                 ' external gateway')
+                    else:
+                        self.vpp.add_ip_route(
+                            vrf=int_vrf,
+                            ip_address=self._pack_address(default_gw_ip),
+                            prefixlen=0,
+                            next_hop_address=self._pack_address(
+                                external_gateway_ip),
+                            next_hop_sw_if_index=gw_port['bvi_if_idx'],
+                            is_ipv6=is_ipv6)
                     # Export the external gateway subnet into the tenant VRF
                     # to enable tenant traffic to flow out. Exporting is done
                     # by setting the next hop sw if index to the loopback's
                     # sw_index (i.e. BVI) on the external network
                     # CLI: ip route add table <int_vrf> <external-subnet>
                     #                                 via <next-hop-sw-indx>
-                    self.vpp.add_ip_route(
-                        vrf=int_vrf,
-                        ip_address=self._pack_address(ext_network),
-                        prefixlen=gw_port['prefixlen'],
-                        next_hop_address=None,
-                        next_hop_sw_if_index=gw_port['bvi_if_idx'],
-                        is_ipv6=is_ipv6)
+                    #
+                    # Note(onong): Do not export an IPv4 external network
+                    # into an IPv6 VRF.
+                    ext_net = ipnet(ext_network)
+                    if (is_ipv6 and not isinstance(ext_net,
+                                                   ipaddress.IPv6Network)):
+                        LOG.info('Not exporting IPv4 external network into '
+                                 'tenant\'s IPv6 VRF')
+                    else:
+                        self.vpp.add_ip_route(
+                            vrf=int_vrf,
+                            ip_address=self._pack_address(ext_network),
+                            prefixlen=gw_port['prefixlen'],
+                            next_hop_address=None,
+                            next_hop_sw_if_index=gw_port['bvi_if_idx'],
+                            is_ipv6=is_ipv6)
                     # Export the tenant network into external VRF so the
                     # gateway can route return traffic to the tenant VM from
                     # the Internet.
                     # CLI: ip route add table 0 <tenant-subnet> via
                     #                                <tenant-loopback-bvi>
-                    self.vpp.add_ip_route(
-                        vrf=ext_vrf,
-                        ip_address=self._pack_address(int_network),
-                        prefixlen=int_port['prefixlen'],
-                        next_hop_address=None,
-                        next_hop_sw_if_index=int_port['bvi_if_idx'],
-                        is_ipv6=is_ipv6)
+                    #
+                    # Note(onong): Do not export an IPv4 internal network
+                    # into an IPv6 external VRF.
+                    int_net = ipnet(int_network)
+                    if (is_ipv6 and not isinstance(int_net,
+                                                   ipaddress.IPv6Network)):
+                        LOG.info('Not exporting tenant\'s IPv4 internal '
+                                 'network into IPv6 external VRF')
+                    else:
+                        self.vpp.add_ip_route(
+                            vrf=ext_vrf,
+                            ip_address=self._pack_address(int_network),
+                            prefixlen=int_port['prefixlen'],
+                            next_hop_address=None,
+                            next_hop_sw_if_index=int_port['bvi_if_idx'],
+                            is_ipv6=is_ipv6)
                 else:
                     self.vpp.delete_ip_route(
                         vrf=int_vrf,
