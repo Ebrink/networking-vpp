@@ -2802,8 +2802,14 @@ class EtcdListener(object):
 
         (id, bound_callback, props) = self.iface_state[iface_idx]
 
+        # For trunk sub-ports, it's the parent vhostuser port that needs to
+        # be linked up
+        if 'parent_uuid' in props:
+            port_id = props['parent_uuid']
+        else:
+            port_id = id
         if (props['bind_type'] == 'vhostuser' and
-                not self.vppf.vhostuser_linked_up(id)):
+                not self.vppf.vhostuser_linked_up(port_id)):
             # vhostuser connection that hasn't yet found a friend
             return
 
@@ -3037,14 +3043,25 @@ class EtcdListener(object):
          "segmentation_type": "vlan",
          "uplink_seg_type": "vlan",
          "port_id": "9ee91c37-9150-49ff-9ea7-48e98547771a",
-         "physnet": "physnet1"},
+         "physnet": "physnet1",
+         "allowed_address_pairs": [],
+         "port_security_enabled": true,
+         "security_groups": ["8d55a44a-935d-4296-99ab-b0749b725df4"],
+         "bound_callback" : bind_notifier_object,
+         },
 
          {"segmentation_id": 12,
           "uplink_seg_id": 139,
           "segmentation_type": "vlan",
           "uplink_seg_type": "vlan",
           "port_id": "2b1a89ba-78f1-4350-b71a-7caf7f23cbcf",
-          "physnet": "physnet1"}]
+          "physnet": "physnet1",
+          "allowed_address_pairs": [],
+          "port_security_enabled": true,
+          "security_groups": ["8d55a44a-935d-4296-99ab-b0749b725df4"],
+          "bound_callback" : bind_notifier_object,
+          }
+          ]
 
         """
         LOG.debug('Binding or Unbinding subports %s of parent trunk port %s',
@@ -3072,10 +3089,33 @@ class EtcdListener(object):
                 LOG.debug("Bringing up the trunk subport vhost ifidx %s",
                           subport_iface_idx)
                 self.vppf.ifup(subport_iface_idx)
+                # Set port security on subport
+                LOG.debug("Setting port security on trunk subport ifidx %s",
+                          subport_iface_idx)
+                port_security_enabled = subport_data.get(
+                    'port_security_enabled',
+                    True)
+                if port_security_enabled:
+                    self.iface_awaiting_secgroups[subport_iface_idx] = \
+                        subport_data.get('security_groups', [])
+                else:
+                    self.iface_awaiting_secgroups[subport_iface_idx] = None
+                id = subport_data['port_id']
+                self.iface_state[subport_iface_idx] = (
+                    id,
+                    subport_data['bound_callback'],
+                    props
+                    )
+                self.iface_state_ifidx[id] = subport_iface_idx
+                self.apply_spoof_macip(subport_iface_idx, subport_data, props)
+                self.maybe_apply_secgroups(subport_iface_idx)
         # unbind subports we are told to unbind
         for subport in subports_to_unbind:
             LOG.debug('Unbinding subport %s of parent_port %s',
                       subport, parent_port)
+            if self.iface_state_ifidx[subport] in self.iface_state:
+                del self.iface_state[self.iface_state_ifidx[subport]]
+            del self.iface_state_ifidx[subport]
             self.vppf.unbind_subport_on_host(subport)
             self.bound_subports[parent_port].remove(subport)
 
@@ -3529,15 +3569,27 @@ class TrunkWatcher(etcdutils.EtcdChangeWatcher):
           "segmentation_type": "vlan",
           "uplink_seg_type": "vlan",
           "port_id": "9ee91c37-9150-49ff-9ea7-48e98547771a",
-          "physnet": "physnet1"},
+          "physnet": "physnet1",
+          "allowed_address_pairs": [],
+          "mac_address": "fa:16:3e:c4:80:dc",
+          "port_security_enabled": true,
+          "fixed_ips": [{"subnet_id": "05cfd12c-9db8-4f55-a2b9-aca89f412932",
+                        "ip_address": "10.110.110.7"}],
+          "security_groups": ["8d55a44a-935d-4296-99ab-b0749b725df4"]},
 
          {"segmentation_id": 12,
           "uplink_seg_id": 139,
           "segmentation_type": "vlan",
           "uplink_seg_type": "vlan",
           "port_id": "2b1a89ba-78f1-4350-b71a-7caf7f23cbcf",
-          "physnet": "physnet1"}],
-    }
+          "physnet": "physnet1",
+          "allowed_address_pairs": [],
+          "mac_address": "fa:17:3e:c4:80:de",
+          "port_security_enabled": true,
+          "fixed_ips": [{"subnet_id": "05cfd12c-9db8-4f55-a2b9-aca89f412932",
+                        "ip_address": "10.110.110.8"}],
+          "security_groups": ["8d55a44a-935d-4296-99ab-b0749b725df4"]},
+          ]}
     How does it work?
     The ml2 server:
     1) Writes above etcd key/value when a trunk port is bound on the host.
@@ -3561,7 +3613,10 @@ class TrunkWatcher(etcdutils.EtcdChangeWatcher):
         # Due to out-of-sequence etcd watch events during an agent restart,
         # we do not yet know at this point whether the parent port is setup.
         # So, we'll add it to the awaiting parents queue and reconsider it.
-        self.data.subports_awaiting_parents[parent_port] = data['sub_ports']
+        subport_data = data['sub_ports']
+        for subport in subport_data:
+            subport['bound_callback'] = lambda *args: None
+        self.data.subports_awaiting_parents[parent_port] = subport_data
         # reconsider awaiting sub_ports
         self.data.reconsider_trunk_subports()
 
