@@ -145,6 +145,18 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
     def _trunk_path(self, host, port_id):
         return nvpp_const.LEADIN + "/nodes/" + host + "/trunks/" + port_id
 
+    # TODO(najoy): Refactor code for managing remote security-groups by both
+    # mech_vpp and trunk_vpp
+    def _remote_group_path(self, secgroup_id, port_id):
+        remote_group_key_space = nvpp_const.LEADIN + '/global/remote_group'
+        return remote_group_key_space + "/" + secgroup_id + "/" + port_id
+
+    def _remote_group_paths(self, port):
+        """Compute the remote group paths of a trunk subport."""
+        security_groups = port.get('security_groups', [])
+        return [self._remote_group_path(secgroup_id, port['port_id'])
+                for secgroup_id in security_groups]
+
     @db_context_writer
     def _write_trunk_journal(self, context, trunk_path, trunk_data):
         """Write the trunk journal to etcd."""
@@ -158,6 +170,39 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
         else:
             etcd_data = trunk_data
         db.journal_write(context.session, trunk_path, etcd_data)
+
+    @db_context_writer
+    def _write_remote_group_journal(self, context, subport_data,
+                                    remove_key=False):
+        """Writes the remote group journal for a trunk subport.
+
+        subport_data format:
+        {'allowed_address_pairs': [],
+         'port_id': '6bbf981c-68d4-4664-92b6-ec40eeeb5226',
+         'uplink_seg_id': 158,
+         'mac_address': u'fa:16:3e:a1:b7:c1',
+         'fixed_ips': [{'subnet_id': u'05cfd12c-9db8-4f55-a2b9-aca89f412932',
+                        'ip_address': u'10.110.110.6'}],
+         'uplink_seg_type': u'vlan',
+         'security_groups': [u'8d55a44a-935d-4296-99ab-b0749b725df4'],
+         'segmentation_id': 101,
+         'port_security_enabled': True,
+         'segmentation_type': u'vlan',
+         'physnet': u'physnet'}
+
+         To remove a key from etcd, set remove_key=True
+        """
+        LOG.debug("trunk_service: writing trunk sub-port remote-group "
+                  "journal for sub-port %s", subport_data)
+        if remove_key:
+            data = None
+        else:
+            data = [item['ip_address'] for item in subport_data['fixed_ips']]
+
+        for remote_group_path in self._remote_group_paths(subport_data):
+            LOG.debug('Updating etcd with remote group trunk subport data %s',
+                      data)
+            db.journal_write(context.session, remote_group_path, data)
 
     @db_base_plugin_common.convert_result_to_dict
     def _get_trunk_data(self, trunk_obj):
@@ -221,10 +266,11 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
                         payload=payload)
         return trunk_obj
 
-    def add_uplink_to_subports(self, context, trunk_data):
-        """Add uplink network data to trunk subports.
+    def add_data_to_subports(self, context, trunk_data):
+        """Add network and security data to trunk subports.
 
-        Side effect: Updates the parameter trunk_data to include network info
+        Side effect: Updates the parameter trunk_data to include
+        the uplink network info and subport security/mac/ip address info.
         """
         for subport in trunk_data['sub_ports']:
             port_id = subport['port_id']
@@ -234,6 +280,11 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
             subport['physnet'] = network[provider.PHYSICAL_NETWORK]
             subport['uplink_seg_type'] = network[provider.NETWORK_TYPE]
             subport['uplink_seg_id'] = network[provider.SEGMENTATION_ID]
+            subport['allowed_address_pairs'] = port['allowed_address_pairs']
+            subport['port_security_enabled'] = port['port_security_enabled']
+            subport['security_groups'] = port['security_groups']
+            subport['mac_address'] = port['mac_address']
+            subport['fixed_ips'] = port['fixed_ips']
         LOG.debug('Updated trunk data %s for trunk port %s', trunk_data,
                   trunk_data['port_id'])
         return trunk_data
@@ -247,15 +298,23 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
         subport adds and removals.When invoked, this method fetches the
         updated trunk object and writes to the etcd journal.
         """
-        LOG.debug("Triggering a trunk update with data %s", kwargs)
         context = kwargs['context']
         original_port = kwargs['original_port']
         current_port = kwargs['port']
         port_id = current_port['id']
+        # return if the port is not a trunk
+        trunk_details = current_port.get('trunk_details')
+        # Check if the port is a parent of a trunk
+        if not trunk_details:
+            return
+        LOG.debug("Triggering a trunk update with data %s", kwargs)
         LOG.debug("Fetching trunk data for port %s", port_id)
         trunk_obj = trunk_objects.Trunk.get_object(context,
                                                    port_id=port_id)
         if trunk_obj:
+            trunk_data = self._get_trunk_data(trunk_obj)
+            # Add uplink network data to trunk to enable binding
+            trunk_data = self.add_data_to_subports(context, trunk_data)
             # Bind - write to etcd
             if (current_port[portbindings.VIF_TYPE] ==
                     portbindings.VIF_TYPE_VHOST_USER):
@@ -265,9 +324,9 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
                     LOG.debug('Updating the bound trunk port %s', port_id)
                 else:
                     LOG.debug('Binding the trunk port %s', port_id)
-                trunk_data = self._get_trunk_data(trunk_obj)
-                # Add uplink network data to trunk to enable binding
-                trunk_data = self.add_uplink_to_subports(context, trunk_data)
+                # Write remote-group etcd keys for subports
+                for subport_data in trunk_data['sub_ports']:
+                    self._write_remote_group_journal(context, subport_data)
                 host = current_port['binding:host_id']
                 LOG.debug('Updating etcd with trunk_data %s', trunk_data)
                 self.update_trunk(context, trunk_obj.id,
@@ -281,6 +340,12 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
                     portbindings.VIF_TYPE_VHOST_USER):
                 LOG.debug('Unbinding trunk port %s', port_id)
                 host = original_port[portbindings.HOST_ID]
+                # Remove all remote-group subport keys from etcd
+                for subport_data in trunk_data['sub_ports']:
+                    self._write_remote_group_journal(context,
+                                                     subport_data,
+                                                     remove_key=True)
+                # remove the trunk key from etcd
                 trunk_data = None
                 self.update_trunk(context, trunk_obj.id,
                                   {'trunk': {'status':
@@ -399,10 +464,19 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
 
     @db_base_plugin_common.convert_result_to_dict
     def remove_subports(self, context, trunk_id, subports):
-        """Remove one or more subports from the trunk."""
+        """Remove one or more subports from the trunk.
+
+        param: subports:
+        {u'sub_ports': [{u'port_id': u'fa006724-dbca-4e7f-bb6b-ec70162eb681'}]}
+        """
         LOG.debug("Removing subports %s from trunk %s", subports, trunk_id)
         trunk = self._get_trunk(context, trunk_id)
         original_trunk = copy.deepcopy(trunk)
+        # key-value data corresponding to original trunk
+        original_trunk_data = self._get_trunk_data(trunk)
+        # ID's of subports to remove
+        subports_to_remove = [pid['port_id'] for pid in subports['sub_ports']]
+        LOG.debug('trunk subports to remove: %s', subports_to_remove)
         subports = subports['sub_ports']
         subports = self.validate_subports(context, subports, trunk,
                                           basic_validation=True,
@@ -440,6 +514,20 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
                                 events.PRECOMMIT_DELETE,
                                 self, payload=payload)
                 self.send_subport_update_to_etcd(context, trunk)
+                # Subport data to remove
+                subports = [
+                    subport for subport in original_trunk_data['sub_ports'] if
+                    subport['port_id'] in subports_to_remove]
+                original_trunk_data['sub_ports'] = subports
+                trunk_data = self.add_data_to_subports(context,
+                                                       original_trunk_data)
+                # Remove all remote-group subport keys from etcd
+                LOG.debug('trunk data with subports to remove: %s',
+                          trunk_data)
+                for subport_data in trunk_data['sub_ports']:
+                    self._write_remote_group_journal(context,
+                                                     subport_data,
+                                                     remove_key=True)
         if removed_subports:
             registry.notify(trunk_const.SUBPORTS,
                             events.AFTER_DELETE,
