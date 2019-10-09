@@ -25,7 +25,7 @@ from networking_vpp.compat import resource_extend
 from networking_vpp.compat import resources
 from networking_vpp import constants as nvpp_const
 from networking_vpp.db import db
-from networking_vpp.mech_vpp import EtcdAgentCommunicator
+from networking_vpp.mech_vpp import JournalManager
 
 from neutron.db import common_db_mixin
 from neutron.db import db_base_plugin_common
@@ -72,8 +72,7 @@ class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
 
     def __init__(self):
         super(VppTrunkPlugin, self).__init__()
-        self.communicator = EtcdAgentCommunicator(
-            notify_bound=lambda *args: None)
+        self.communicator = JournalManager()
         # Supported segmentation type is VLAN
         self._segmentation_types = {
             trunk_const.VLAN: plugin_utils.is_valid_vlan_tag

@@ -431,7 +431,119 @@ SecurityGroupRule = namedtuple(
     )
 
 
-class EtcdAgentCommunicator(AgentCommunicator):
+class JournalManager(object):
+    """Perform journal management tasks.
+
+    Handles the post-journal part of the work that clears out the table and
+    updates etcd. Also kicks the forward worker threads that is active and
+    tells it that it has work to do.
+    """
+    def __init__(self):
+
+        self.client_factory = etcdutils.EtcdClientFactory(cfg.CONF.ml2_vpp)
+
+        self.election_key_space = LEADIN + '/election'
+        self.journal_kick_key = self.election_key_space + '/kick-journal'
+        LOG.debug('Journal manager init complete')
+
+    def kick(self):
+        # A thread in one Neutron process - possibly not this one -
+        # is waiting to send updates from the DB to etcd.  Wake it.
+        try:
+            # TODO(ijw): got to be a more efficient way to create
+            # a client for each thread
+            # From a Neutron thread, we need to tell whichever of the
+            # forwarder threads that is active that it has work to do.
+            self.client_factory.client().write(self.journal_kick_key, '')
+        except etcd.EtcdException:
+            # A failed wake is not the end of the world.
+            pass
+
+    ######################################################################
+    # The post-journal part of the work that clears out the table and
+    # updates etcd.
+
+    def make_forward_worker(self):
+        # Assign a UUID to each worker thread to enable thread election
+        return eventlet.spawn(self._forward_worker)
+
+    def do_etcd_update(self, etcd_writer, k, v):
+        with eventlet.Timeout(cfg.CONF.ml2_vpp.etcd_write_time, False):
+            if v is None:
+                etcd_writer.delete(k)
+            else:
+                etcd_writer.write(k, v)
+
+    def _forward_worker(self):
+        LOG.debug('forward worker begun')
+        etcd_client = self.client_factory.client()
+        etcd_writer = etcdutils.json_writer(etcd_client)
+        lease_time = cfg.CONF.ml2_vpp.forward_worker_master_lease_time
+        recovery_time = cfg.CONF.ml2_vpp.forward_worker_recovery_time
+
+        etcd_election = etcdutils.EtcdElection(etcd_client, 'forward_worker',
+                                               self.election_key_space,
+                                               work_time=lease_time,
+                                               recovery_time=recovery_time)
+        while True:
+            # Try indefinitely to regain the mastery of this thread pool. Most
+            # threads will be sitting here
+            etcd_election.wait_until_elected()
+            try:
+                # Master loop - as long as we are master and can
+                # maintain it, process incoming events.
+
+                # Every long running section is preceded by extending
+                # mastership of the thread pool and followed by
+                # confirmation that we still have mastership (usually
+                # by a further extension).
+
+                def work(k, v):
+                    self.do_etcd_update(etcd_writer, k, v)
+
+                # We will try to empty the pending rows in the DB
+                while True:
+                    etcd_election.extend_election(
+                        cfg.CONF.ml2_vpp.db_query_time)
+                    session = n_context.get_admin_context().session
+                    maybe_more = db.journal_read(session, work)
+                    if not maybe_more:
+                        LOG.debug('forward worker has emptied journal')
+                        etcd_election.extend_election(lease_time)
+                        break
+
+                # work queue is now empty.
+
+                # Wait to be kicked, or (in case of emergency) run
+                # every few seconds in case another thread or process
+                # dumped work and failed to get notification to us to
+                # process it.
+                with eventlet.Timeout(lease_time + 1, False):
+                    etcd_election.extend_election(lease_time)
+                    try:
+                        etcd_client.watch(self.journal_kick_key,
+                                          timeout=lease_time)
+                    except etcd.EtcdException:
+                        # Check the DB queue now, anyway
+                        pass
+            except etcdutils.EtcdElectionLost:
+                # We are no longer master
+                pass
+            except Exception as e:
+                # TODO(ijw): log exception properly
+                LOG.warning("problems in forward worker - Error name is %s. "
+                            "proceeding without quiting", type(e).__name__)
+                LOG.warning("Exception in forward_worker: %s", e)
+                # something went bad; breathe, in case we end
+                # up in a tight loop
+                time.sleep(1)
+                # never quit
+                pass
+
+    ######################################################################
+
+
+class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
     """Comms unit for etcd
 
     This will talk to etcd and tell it what is going on
@@ -489,8 +601,6 @@ class EtcdAgentCommunicator(AgentCommunicator):
         # this state by Nova.
         self.notify_bound = notify_bound
 
-        self.client_factory = etcdutils.EtcdClientFactory(cfg.CONF.ml2_vpp)
-
         # For Liberty support, we have to have a memory between notifications
         self.deleted_rule_secgroup_id = {}
 
@@ -500,8 +610,6 @@ class EtcdAgentCommunicator(AgentCommunicator):
         self.secgroup_key_space = LEADIN + '/global/secgroups'
         self.remote_group_key_space = LEADIN + '/global/remote_group'
         self.gpe_key_space = LEADIN + '/global/networks/gpe'
-        self.election_key_space = LEADIN + '/election'
-        self.journal_kick_key = self.election_key_space + '/kick-journal'
 
         etcd_client = self.client_factory.client()
         etcd_helper = etcdutils.EtcdHelper(etcd_client)
@@ -970,19 +1078,6 @@ class EtcdAgentCommunicator(AgentCommunicator):
     # succeed (so is a bad candidate for calling within or after a
     # transaction).
 
-    def kick(self):
-        # A thread in one Neutron process - possibly not this one -
-        # is waiting to send updates from the DB to etcd.  Wake it.
-        try:
-            # TODO(ijw): got to be a more efficient way to create
-            # a client for each thread
-            # From a Neutron thread, we need to tell whichever of the
-            # forwarder threads that is active that it has work to do.
-            self.client_factory.client().write(self.journal_kick_key, '')
-        except etcd.EtcdException:
-            # A failed wake is not the end of the world.
-            pass
-
     def bind(self, session, port, segment, host, binding_type):
         # NB segmentation_id is not optional in the wireline protocol,
         # we just pass 0 for unsegmented network types
@@ -1060,89 +1155,6 @@ class EtcdAgentCommunicator(AgentCommunicator):
                                                      current_port['id']),
                              None)
         self.kick()
-
-    ######################################################################
-    # The post-journal part of the work that clears out the table and
-    # updates etcd.
-
-    def make_forward_worker(self):
-        # Assign a UUID to each worker thread to enable thread election
-        return eventlet.spawn(self._forward_worker)
-
-    def do_etcd_update(self, etcd_writer, k, v):
-        with eventlet.Timeout(cfg.CONF.ml2_vpp.etcd_write_time, False):
-            if v is None:
-                etcd_writer.delete(k)
-            else:
-                etcd_writer.write(k, v)
-
-    def _forward_worker(self):
-        LOG.debug('forward worker begun')
-        etcd_client = self.client_factory.client()
-        etcd_writer = etcdutils.json_writer(etcd_client)
-        lease_time = cfg.CONF.ml2_vpp.forward_worker_master_lease_time
-        recovery_time = cfg.CONF.ml2_vpp.forward_worker_recovery_time
-
-        etcd_election = etcdutils.EtcdElection(etcd_client, 'forward_worker',
-                                               self.election_key_space,
-                                               work_time=lease_time,
-                                               recovery_time=recovery_time)
-        while True:
-            # Try indefinitely to regain the mastery of this thread pool. Most
-            # threads will be sitting here
-            etcd_election.wait_until_elected()
-            try:
-                # Master loop - as long as we are master and can
-                # maintain it, process incoming events.
-
-                # Every long running section is preceded by extending
-                # mastership of the thread pool and followed by
-                # confirmation that we still have mastership (usually
-                # by a further extension).
-
-                def work(k, v):
-                    self.do_etcd_update(etcd_writer, k, v)
-
-                # We will try to empty the pending rows in the DB
-                while True:
-                    etcd_election.extend_election(
-                        cfg.CONF.ml2_vpp.db_query_time)
-                    session = n_context.get_admin_context().session
-                    maybe_more = db.journal_read(session, work)
-                    if not maybe_more:
-                        LOG.debug('forward worker has emptied journal')
-                        etcd_election.extend_election(lease_time)
-                        break
-
-                # work queue is now empty.
-
-                # Wait to be kicked, or (in case of emergency) run
-                # every few seconds in case another thread or process
-                # dumped work and failed to get notification to us to
-                # process it.
-                with eventlet.Timeout(lease_time + 1, False):
-                    etcd_election.extend_election(lease_time)
-                    try:
-                        etcd_client.watch(self.journal_kick_key,
-                                          timeout=lease_time)
-                    except etcd.EtcdException:
-                        # Check the DB queue now, anyway
-                        pass
-            except etcdutils.EtcdElectionLost:
-                # We are no longer master
-                pass
-            except Exception as e:
-                # TODO(ijw): log exception properly
-                LOG.warning("problems in forward worker - Error name is %s. "
-                            "proceeding without quiting", type(e).__name__)
-                LOG.warning("Exception in forward_worker: %s", e)
-                # something went bad; breathe, in case we end
-                # up in a tight loop
-                time.sleep(1)
-                # never quit
-                pass
-
-    ######################################################################
 
     def make_return_worker(self):
         """The thread that manages data returned from agents via etcd."""
