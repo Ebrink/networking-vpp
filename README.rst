@@ -604,30 +604,37 @@ we will be increasing the coverage of the unit tests, as well as
 enhancing the types of system/integration tests that we run, e.g.
 negative testing, compatibility testing, etc.
 
-What's new in the 19.04 release?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What's new in the 19.08.1 release?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the 19.04 release, we've made the below changes:
+In the 19.08.1 release, we've made the below changes:
 
-- We've worked on building an automated test pipeline using Tempest. We've
-  identified and fixed bugs that we discovered during our integration test
-  runs. We are currently investigating a bug, which causes a race condition
-  in the agent. We hope to have a fix for this issue soon.
+- We've added ERSPAN support for Tap-as-a-Service (TaaS). Since ERSPAN provides
+  remote port mirroring, you can now mirror your OpenStack traffic to a
+  destination outside of OpenStack or to a remote OpenStack VM.
+  This is a customized version of OpenStack TaaS. We will be working with the
+  community to push our custom TaaS extensions upstream. In the meantime, you
+  can access our TaaS code at https://github.com/jbeuque/tap-as-a-service .
+  For further info on installation and usage, you can read the README_taas.txt.
 
-- We've made it possible to overwrite the VPP repo path. VPP repo paths are
-  constructed, pointing to upstream repos, based on OS and version requested.
-  Now you can allow this to be redirected elsewhere.
+- We've updated the code to be compatible with VPP 19.08 & 19.08.1 API changes.
 
-- We've updated the mac-ip permit list to allow the link-local IPv6
-  address prefix for neighbor discovery.
+- We've updated the unit test framework to support python3.5 onwards.
 
-- We've worked on additional fixes for Python3 compatibility and enabled py3
-  tests in gerrit gating.
+- We've added security-group support for Trunk sub-ports and added support for
+  neutron trunk_details extension.
 
-- We've updated the ACL calls in vpp.py to tidy-up the arguments. We've worked
-  on reordering vpp.py to group related functions, which is going
-  to be helpful for further refactoring work in the future.
+- We've fixed bugs in our Trunk and L3 plugins that caused a race condition
+  during port binding.
 
-- We've been doing the usual round of bug fixes and updates - the code
-  will work with both VPP 19.01 and 19.04 and has been updated to
-  keep up with Neutron Rocky and Stein.
+- We've migrated our repo from Openstack to Opendev to be consistent with
+  OpenStack rebranding efforts.
+
+- A recent change in nova caused live migration to fail for instances with
+  NUMA characteristics. This is a limitation in nova and not VPP/networking-vpp.
+  However, it is still possible to use live migration with VPP/networking-vpp.
+  Please refer to an earlier section in this file for further details.
+
+- We've been doing the usual round of bug fixes, clean-ups and updates - the
+  code will work with VPP 19.08.1 and has been updated to keep up with Neutron
+  Rocky and Stein.
