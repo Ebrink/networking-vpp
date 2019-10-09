@@ -69,3 +69,7 @@ JWT_MAX_DURATION=${JWT_MAX_DURATION:-0}
 # Layer3 Router/HA Settings
 # Provide a hostname or a comma separated list of L3 hostnames
 L3_HOSTS=${L3_HOSTS:-localhost}
+
+# ERSPAN configuration
+ESP_SRC_CIDR=${ESP_SRC_CIDR:-}
+ESP_PHYSNET=${ESP_PHYSNET:-}

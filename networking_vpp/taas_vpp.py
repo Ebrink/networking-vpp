@@ -64,6 +64,7 @@ class FeatureTaasService(etcdutils.EtcdChangeWatcher):
           "description": "",
           "tenant_id": "",
           "project_id": "",
+          "dest_type": "Port",
           "port_id": "",
           "id": "",
           "name": ""},
@@ -95,6 +96,23 @@ class FeatureTaasService(etcdutils.EtcdChangeWatcher):
            "tenant_id": "",
            "created_at": "",
            "binding:vnic_type": ""}}
+
+
+    The following etcd key structure is created by this class:
+    path : LEADIN/global/taas_service/<taas_service_id>
+    {"tap_service":
+         {"status": "PENDING_ACTIVE",
+          "description": "",
+          "tenant_id": "",
+          "project_id": "",
+          "dest_type": "ERSPAN",
+          "port_id": "",
+          "erspan_src_addr": "",
+          "erspan_dst_addr": "",
+          "erspan_network_id": "",
+          "id": "",
+          "name": ""},
+           }
 
     The following etcd key structure is read by this class:
     path : LEADIN/state_taas/<hostname>/taas_service/<taas_service_id>
@@ -149,6 +167,7 @@ class FeatureTaasService(etcdutils.EtcdChangeWatcher):
 
     path = 'taas_service'
     nodes_key_space = LEADIN + '/nodes'
+    global_key_space = LEADIN + '/global'
 
     def __init__(self, service_plugin, etcd_client, name, watch_path):
         # The service_plugin is an instance of
@@ -159,6 +178,10 @@ class FeatureTaasService(etcdutils.EtcdChangeWatcher):
     def _build_etcd_nodes_path(self, host, uuid):
         return (self.nodes_key_space +
                 '/' + host + '/' + self.path + '/' + str(uuid))
+
+    def _build_etcd_global_path(self, uuid):
+        return (self.global_key_space +
+                '/' + self.path + '/' + str(uuid))
 
     def added(self, key, value):
         """Called when the etcd tap service state key has been created."""
@@ -184,10 +207,25 @@ class FeatureTaasService(etcdutils.EtcdChangeWatcher):
            Create a key in etcd nodes/<computeNode>/taas_service to request
            the compute node to create a tap service
         """
-        host = port['binding:host_id']
-        service_id = taas_data['tap_service']['id']
-        EtcdJournalHelper.etcd_write(
-            self._build_etcd_nodes_path(host, service_id), taas_data)
+        LOG.debug("tap_service create called")
+        # If there is no port for the tap_service it means we are in
+        # ERSPAN EXT Mode. There is no compute node associated with the tap
+        # service. Thus the tap service is put in active mode immediately.
+        # On the other hand, if there is a port, we have to wait for the
+        # compute node to answer via ectd before putting the tap_service
+        # in active mode.
+        if port is not None:
+            host = port['binding:host_id']
+            service_id = taas_data['tap_service']['id']
+            EtcdJournalHelper.etcd_write(
+                self._build_etcd_nodes_path(host, service_id), taas_data)
+        else:
+            service_id = taas_data['tap_service']['id']
+            LOG.debug("tap_service service_id=%s" % service_id)
+            LOG.debug("tap_service taas_data=%s" % taas_data)
+            taas_data['tap_service']['status'] = constants.ACTIVE
+            EtcdJournalHelper.etcd_write(
+                self._build_etcd_global_path(service_id), taas_data)
 
     def delete(self, host, taas_data):
         """Server to compute node - deletion request.
@@ -196,8 +234,12 @@ class FeatureTaasService(etcdutils.EtcdChangeWatcher):
            the compute node to delete the tap service
         """
         service_id = taas_data['tap_service']['id']
-        EtcdJournalHelper.etcd_write(
-            self._build_etcd_nodes_path(host, service_id), None)
+        if host is not None:
+            EtcdJournalHelper.etcd_write(
+                self._build_etcd_nodes_path(host, service_id), None)
+        else:
+            EtcdJournalHelper.etcd_write(
+                self._build_etcd_global_path(service_id), None)
 
 
 class FeatureTaasFlow(etcdutils.EtcdChangeWatcher):
@@ -367,6 +409,7 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
         etcd_client = self.client_factory.client()
         etcd_helper = etcdutils.EtcdHelper(etcd_client)
         etcd_helper.ensure_dir(LEADIN + '/state_taas')
+        etcd_helper.ensure_dir(LEADIN + '/global/taas_service')
 
         self.taas_service = FeatureTaasService(service_plugin,
                                                self.client_factory.client(),
@@ -398,6 +441,7 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
         This message includes taas_id that is added vlan_range_start to
         so that the vpp taas agent can use taas_id as VLANID.
         """
+        LOG.debug("create_tap_service_precommit called.")
 
         # by default, the status is ACTIVE: wait for creation...
         context.tap_service['status'] = constants.PENDING_CREATE
@@ -412,20 +456,44 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
                                                    context.tap_service})
         ts = context.tap_service
         tap_id_association = context.tap_id_association
-        # taas_vlan_id = (tap_id_association['taas_id'] +
-        #                cfg.CONF.taas.vlan_range_start)
-        taas_vlan_id = tap_id_association['taas_id']
-        port = self.service_plugin._get_port_details(context._plugin_context,
-                                                     ts['port_id'])
 
-        if taas_vlan_id > cfg.CONF.taas.vlan_range_end:
-            raise taas_ex.TapServiceLimitReached()
+        # The field port_id always exists as it's a field in the SQL database.
+        # For ERSPAN EXT mode, it is set to an empty string
+        # If the port_id is empty, we're in ERSPAN Ext mode.
+        # If port_id is not empty and erspan_dst_ip is defined, we're in
+        # ERSPAN Internal mode.
+        # Otherwise we're in normal port tapping mode.
+        if ts['port_id'] == '':
+            dest_type = 'ERSPAN_EXT'
+        elif 'erspan_dst_ip' in ts and ts['erspan_dst_ip'] != '':
+            dest_type = 'ERSPAN_INT'
+        else:
+            dest_type = 'Port'
 
-        msg = {"tap_service": ts,
-               "taas_id": taas_vlan_id,
-               "port": port}
+        if dest_type != 'ERSPAN_EXT':
+            taas_vlan_id = tap_id_association['taas_id']
+            port = self.service_plugin._get_port_details(
+                context._plugin_context,
+                ts['port_id'])
 
-        self.taas_service.create(port, msg)
+            if taas_vlan_id > cfg.CONF.taas.vlan_range_end:
+                raise taas_ex.TapServiceLimitReached()
+
+            msg = {"tap_service": ts,
+                   "taas_id": taas_vlan_id,
+                   "port": port,
+                   "dest_type": dest_type}
+            self.taas_service.create(port, msg)
+
+        else:
+            msg = {"tap_service": ts,
+                   "dest_type": dest_type}
+            self.taas_service.create(None, msg)
+            self.service_plugin.update_tap_service(context._plugin_context,
+                                                   ts['id'],
+                                                   {'tap_service':
+                                                       context.tap_service})
+
         return
 
     def create_tap_service_postcommit(self, context):
@@ -439,23 +507,34 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
         so that the vpp taas agent can use taas_id as VLANID.
         """
         ts = context.tap_service
-        tap_id_association = context.tap_id_association
-        # taas_vlan_id = (tap_id_association['taas_id'] +
-        #                cfg.CONF.taas.vlan_range_start)
-        taas_vlan_id = tap_id_association['taas_id']
-        try:
-            port = self.service_plugin._get_port_details(
-                context._plugin_context,
-                ts['port_id'])
-            host = port['binding:host_id']
-        except n_exc.PortNotFound:
-            # if not found, we just pass to None
-            port = None
-            host = None
+        if ts['port_id'] == '':
+            dest_type = 'ERSPAN_EXT'
+        elif 'erspan_dst_ip' in ts and ts['erspan_dst_ip'] != '':
+            dest_type = 'ERSPAN_INT'
+        else:
+            dest_type = 'Port'
 
-        msg = {"tap_service": ts,
-               "taas_id": taas_vlan_id,
-               "port": port}
+        if dest_type != 'ERSPAN_EXT':
+            tap_id_association = context.tap_id_association
+            # taas_vlan_id = (tap_id_association['taas_id'] +
+            #                cfg.CONF.taas.vlan_range_start)
+            taas_vlan_id = tap_id_association['taas_id']
+            try:
+                port = self.service_plugin._get_port_details(
+                    context._plugin_context,
+                    ts['port_id'])
+                host = port['binding:host_id']
+            except n_exc.PortNotFound:
+                # if not found, we just pass to None
+                port = None
+                host = None
+
+            msg = {"tap_service": ts,
+                   "taas_id": taas_vlan_id,
+                   "port": port}
+        else:
+            msg = {"tap_service": ts}
+            host = None
 
         self.taas_service.delete(host, msg)
         return
@@ -466,6 +545,7 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
 
     def create_tap_flow_precommit(self, context):
         """Send tap flow creation message to agent."""
+        LOG.debug("create_tap_flow_precommit called.")
         tf = context.tap_flow
         tf['status'] = constants.PENDING_CREATE
         taas_id = self._get_taas_id(context._plugin_context, tf)
@@ -484,23 +564,40 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
         # has been added in order for the node to create the vxlan tunnel.
         ts = self.service_plugin.get_tap_service(context._plugin_context,
                                                  tf['tap_service_id'])
-        ts_port = self.service_plugin._get_port_details(
-            context._plugin_context,
-            ts['port_id'])
-        ts_host = ts_port['binding:host_id']
-        ts_port_mac = ts_port['mac_address']
+        if ts['port_id'] == '':
+            dest_type = 'ERSPAN_EXT'
+        elif 'erspan_dst_ip' in ts and ts['erspan_dst_ip'] != '':
+            dest_type = 'ERSPAN_INT'
+        else:
+            dest_type = 'Port'
 
-        # This status will be set in the callback
-        msg = {"tap_flow": tf,
-               "port_mac": port_mac,
-               "taas_id": taas_id,
-               "port": port,
-               "ts_port_mac": ts_port_mac,
-               "tf_host": tf_host,
-               "ts_host": ts_host}
-        self.taas_flow.create(port, msg)
-        if ts_host != tf_host:
-            self.taas_flow.create(ts_port, msg)
+        if dest_type == 'Port' or dest_type == 'ERSPAN_INT':
+            ts_port = self.service_plugin._get_port_details(
+                context._plugin_context,
+                ts['port_id'])
+            ts_host = ts_port['binding:host_id']
+            ts_port_mac = ts_port['mac_address']
+
+            # This status will be set in the callback
+            msg = {"tap_flow": tf,
+                   "port_mac": port_mac,
+                   "taas_id": taas_id,
+                   "port": port,
+                   "ts_port_mac": ts_port_mac,
+                   "tf_host": tf_host,
+                   "ts_host": ts_host,
+                   "dest_type": dest_type}
+            self.taas_flow.create(port, msg)
+            if dest_type == 'Port' and ts_host != tf_host:
+                self.taas_flow.create(ts_port, msg)
+        else:
+            msg = {"tap_flow": tf,
+                   "port_mac": port_mac,
+                   "taas_id": taas_id,
+                   "port": port,
+                   "tf_host": tf_host,
+                   "dest_type": dest_type}
+            self.taas_flow.create(port, msg)
         return
 
     def create_tap_flow_postcommit(self, context):
@@ -518,14 +615,24 @@ class TaasEtcdDriver(service_drivers.TaasBaseDriver):
         # Find the host of the tap service
         ts = self.service_plugin.get_tap_service(context._plugin_context,
                                                  tf['tap_service_id'])
-        ts_port = self.service_plugin._get_port_details(
-            context._plugin_context,
-            ts['port_id'])
-        ts_host = ts_port['binding:host_id']
+        if ts['port_id'] == '':
+            dest_type = 'ERSPAN_EXT'
+        elif 'erspan_dst_ip' in ts and ts['erspan_dst_ip'] != '':
+            dest_type = 'ERSPAN_INT'
+        else:
+            dest_type = 'Port'
 
-        self.taas_flow.delete(host, tf['id'])
-        if ts_host != host:
-            self.taas_flow.delete(ts_host, tf['id'])
+        if dest_type == 'Port' or dest_type == 'ERSPAN_INT':
+            ts_port = self.service_plugin._get_port_details(
+                context._plugin_context,
+                ts['port_id'])
+            ts_host = ts_port['binding:host_id']
+
+            self.taas_flow.delete(host, tf['id'])
+            if dest_type == 'Port' and ts_host != host:
+                self.taas_flow.delete(ts_host, tf['id'])
+        else:
+            self.taas_flow.delete(host, tf['id'])
         return
 
     def delete_tap_flow_postcommit(self, context):
@@ -538,6 +645,7 @@ class TaasVPPDriverExtension(MechDriverExtensionBase):
         pass
 
     def run(self, communicator):
+        LOG.debug("####TaasVPPDriverExtension run called.")
         self.etcdJournalHelper = \
             EtcdJournalHelper(
                 communicator,

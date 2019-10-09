@@ -1491,13 +1491,14 @@ class VPPInterface(object):
                       state=direction,
                       is_l2=is_l2)
 
-    def disable_port_mirroring(self, source_idx, dest_idx):
+    def disable_port_mirroring(self, source_idx, dest_idx, is_l2=1):
         self.LOG.debug("Disable span from %d to %d",
                        source_idx, dest_idx)
         self.call_vpp('sw_interface_span_enable_disable',
                       sw_if_index_from=source_idx,
                       sw_if_index_to=dest_idx,
-                      state=0)
+                      state=0,
+                      is_l2=is_l2)
 
     def dump_port_mirroring(self):
         self.LOG.debug("Dump span")
@@ -1544,4 +1545,44 @@ class VPPInterface(object):
         tuns = {}
         for tun in t:
             tuns[(tun.vni, tun.dst_address,)] = tun.sw_if_index
+        return tuns
+
+    TUNNEL_TYPE_ERSPAN = 2
+
+    def create_erspan_tunnel(self, src_addr, dst_addr, is_ipv6, session_id):
+        self.LOG.debug("Create ERSPAN tunnel session_id: %d", session_id)
+        # Device instance (ifidx) is selected for us (~0)
+        t = self.call_vpp('gre_add_del_tunnel',
+                          is_add=1,
+                          is_ipv6=is_ipv6,
+                          tunnel_type=self.TUNNEL_TYPE_ERPSAN,
+                          instance=0xffffffff,
+                          src_address=src_addr,
+                          dst_address=dst_addr,
+                          outer_fib_id=0,
+                          session_id=session_id)
+        return t.sw_if_index
+
+    def delete_erspan_tunnel(self, src_addr, dst_addr, is_ipv6, session_id):
+        self.LOG.debug("Delete ERSPAN tunnel session_id: %d", session_id)
+        self.call_vpp('gre_add_del_tunnel',
+                      is_add=0,
+                      is_ipv6=is_ipv6,
+                      tunnel_type=self.TUNNEL_TYPE_ERPSAN,
+                      instance=0xffffffff,
+                      src_address=src_addr,
+                      dst_address=dst_addr,
+                      outer_fib_id=0,
+                      session_id=session_id)
+
+    def get_erspan_tunnels(self):
+        """Get the list of existing erspan tunnels in this node
+
+        Tunnels returned as a hash: (session_id, dest) => tunnel ifidx
+        """
+        t = self.call_vpp('gre_tunnel_dump', sw_if_index=0xffffffff)
+        tuns = {}
+        for tun in t:
+            if tun.tunnel_type == self.TUNNEL_TYPE_ERSPAN:
+                tuns[(tun.session_id, tun.dst_address,)] = tun.sw_if_index
         return tuns

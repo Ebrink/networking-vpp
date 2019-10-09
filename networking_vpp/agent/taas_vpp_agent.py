@@ -14,13 +14,27 @@
 #    under the License.
 
 import etcd
+from ipaddress import ip_address
 from ipaddress import ip_network
 from networking_vpp.constants import LEADIN
 from networking_vpp import etcdutils
 from networking_vpp.extension import VPPAgentExtensionBase
 import neutron.agent.linux.ip_lib as ip_lib
+from oslo_config import cfg
+from oslo_log import log as logging
 from oslo_serialization import jsonutils
 import six
+
+
+LOG = logging.getLogger(__name__)
+
+
+def ipnet(ip):
+    return ip_network(six.text_type(ip))
+
+
+def ipaddr(ip):
+    return ip_address(six.text_type(ip))
 
 
 class TaasServiceAgentWatcher(etcdutils.EtcdChangeWatcher):
@@ -59,7 +73,10 @@ class TaasServiceAgentWatcher(etcdutils.EtcdChangeWatcher):
         try:
             port_info = jsonutils.loads(self.etcd_client.read(port_path).value)
             physnet = port_info['physnet']
-            network_type = port_info['network_type']
+            if data['dest_type'] == 'ERSPAN_INT':
+                network_type = 'vlan'
+            else:
+                network_type = port_info['network_type']
 
             # Tapped packets for this destination will be put on their own
             # overlay
@@ -98,8 +115,9 @@ class TaasServiceAgentWatcher(etcdutils.EtcdChangeWatcher):
 
             # Since we want all packets regardless of MAC to go to the other
             # end, we want the bridge to flood
-            self.vppf.vpp.bridge_enable_flooding(
-                bridge_data['bridge_domain_id'])
+            if data['dest_type'] != 'ERSPAN_INT':
+                self.vppf.vpp.bridge_enable_flooding(
+                    bridge_data['bridge_domain_id'])
 
             # Tapped interfaces feed this bridge; this interface will
             # receive the results.
@@ -181,9 +199,57 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         etcd_helper.ensure_dir(self._node_key_space)
         etcd_helper.ensure_dir(self._state_key_space)
         self.iputils = ip_lib.IPWrapper()
+
+        # ERSPan IP address/prefix len
+        self.esp_src_cidr = cfg.CONF.ml2_vpp.esp_src_cidr
+        if self.esp_src_cidr is not None and self.esp_src_cidr != '':
+            (self.esp_src_addr,
+             self.esp_plen) = self.esp_src_cidr.split('/')
+
+        # Name of the ERspan physnet
+        self.esp_physnet = cfg.CONF.ml2_vpp.esp_physnet
+
         super(TaasFlowAgentWatcher, self).__init__(self.etcd_client,
                                                    self.path,
                                                    self._node_key_space)
+
+    def _ensure_ext_link(self):
+        """Ensures that the EXT link interface is present and configured.
+
+        The ext_link is used for ERPSAN_EXT mode to reach the external tap
+        service.
+        The physical interface of ext_link is specified by the paramter
+        esp_phynet of the configuration. The address of ext_link is given by
+        the parameter esp_src_cidr of the configuration.
+        Returns:-
+        The name and the software_if_index of the EXT link or None in case
+        of error.
+        """
+        intf, if_physnet = self.vppf.get_if_for_physnet(self.esp_physnet)
+        LOG.debug('Setting EXT attachment interface: %s',
+                  intf)
+        if if_physnet is None:
+            LOG.error('Cannot create a EXT network because the esp_'
+                      'physnet config value:%s is broken. Make sure this '
+                      'value is set to a valid physnet name used as the '
+                      'EXT interface',
+                      self.esp_physnet)
+            return
+        self.vppf.vpp.ifup(if_physnet)
+        LOG.debug('Configuring EXT ip address %s on '
+                  'interface %s', self.esp_src_cidr, intf)
+        physnet_ip_addrs = self.vppf.vpp.get_interface_ip_addresses(if_physnet)
+        LOG.debug('Exising IP addresses %s', str(physnet_ip_addrs))
+        cidr = (ipaddr(self.esp_src_addr),
+                int(self.esp_plen))
+        if cidr not in physnet_ip_addrs:
+            self.vppf.vpp.set_interface_address(
+                sw_if_index=if_physnet,
+                is_ipv6=1 if ipnet(self.esp_src_addr).version == 6 else 0,
+                address_length=int(self.esp_plen),
+                address=self.vppf._pack_address(self.esp_src_addr)
+                )
+        return (intf, if_physnet)
 
     def _find_port_idx(self, port_id, host):
         port_path = (LEADIN + '/state/' + host + '/ports/' +
@@ -235,6 +301,51 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
             is_ipv6,
             vni)
 
+    def _create_erspan_tunnel(self, src_adr, dst_adr, session_id):
+        """Create a tunnel to a remote destination VTEP."""
+        if ip_network(six.text_type(src_adr)).version == 6:
+            is_ipv6 = 1
+        else:
+            is_ipv6 = 0
+        if ip_network(six.text_type(dst_adr)).version == 6:
+            is_ipv6d = 1
+        else:
+            is_ipv6d = 0
+        if is_ipv6 != is_ipv6d:
+            LOG.error('Cannot create an erspan tunnel because the IP version'
+                      ' of src_adr and dst_adr are different',
+                      self.src_adr, self.dst_adr)
+            return None
+        dst_adrp = self.vppf._pack_address(dst_adr)
+        src_adrp = self.vppf._pack_address(src_adr)
+        esptuns = self.vppf.vpp.get_erspan_tunnels()
+        if is_ipv6 == 0:
+            kadr = dst_adrp + "\x00" * 12
+        else:
+            kadr = dst_adrp
+        tidx = esptuns.get((int(session_id), kadr))
+        if tidx is not None:
+            return tidx
+
+        idx = self.vppf.vpp.create_erspan_tunnel(
+            src_adrp,
+            dst_adrp,
+            is_ipv6,
+            int(session_id))
+        return idx
+
+    def _delete_erspan_tunnel(self, src_adr, dst_adr, session_id):
+        """Remove a VXLAN tunnel from VPP."""
+        if ip_network(six.text_type(src_adr)).version == 6:
+            is_ipv6 = 1
+        else:
+            is_ipv6 = 0
+        self.vppf.vpp.delete_erspan_tunnel(
+            self.vppf._pack_address(src_adr),
+            self.vppf._pack_address(dst_adr),
+            is_ipv6,
+            int(session_id))
+
     def _get_remote_addr(self, port_mac):
         self.vppf.load_gpe_mappings()
         remote_ip = ''
@@ -264,11 +375,8 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         data = jsonutils.loads(value)
         # data = value
 
-        taas_id = data['taas_id']
-        direction = data['tap_flow']['direction']
-        ts_host = data['ts_host']
-        tf_host = data['tf_host']
         # Check Span direction
+        direction = data['tap_flow']['direction']
         DIR_RX = 1
         DIR_TX = 2
         DIR_TX_RX = 3
@@ -279,109 +387,216 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         else:
             direction = DIR_TX_RX
 
-        tap_srv_id = data['tap_flow']['tap_service_id']
-        ts_path = (LEADIN + '/state_taas/' + ts_host +
-                   '/taas_service/' + tap_srv_id)
-        try:
-            ts_info = jsonutils.loads(self.etcd_client.read(ts_path).value)
-            network_type = ts_info['service_bridge']['network_type']
-            physnet = ts_info['service_bridge']['physnet']
+        # Check Destination type
+        if 'dest_type' in data:
+            dest_type = data['dest_type']
+        else:
+            dest_type = 'Port'
 
-            if network_type != 'vxlan':
-                network_type = 'vlan'
-
-            # Check if tap flow and tap service are located in the same node
-            # Local Span
-            if ts_host == tf_host:
-                source_port_idx = self._find_port_idx(
-                    data['tap_flow']['source_port'], tf_host)
-                srv_port_idx = ts_info['port']['iface_idx']
-                # Local Span
-                dst_idx = srv_port_idx
-                self.vppf.vpp.enable_port_mirroring(source_port_idx,
-                                                    srv_port_idx,
-                                                    direction)
-                # Set the tap_flow state in etcd
-                data = {"tf": data,
-                        "port_idx": source_port_idx,
-                        'dst_idx': dst_idx,
-                        'span_mode': 0,  # Local
-                        'tfn': True
-                        }
-            # Remote Span via vlan
-            elif network_type == 'vlan':
-                if self._host == tf_host:
-                    source_port_idx = self._find_port_idx(
-                        data['tap_flow']['source_port'], tf_host)
-
-                    # get/create a numbered bridge domain for the service
-
-                    service_bridge = self.vppf.ensure_network_on_host(
-                        physnet, network_type, taas_id)
-                    service_bridge_id = service_bridge['bridge_domain_id']
-                    self.vppf.vpp.bridge_enable_flooding(service_bridge_id)
-
-                    # Remote Span
-                    srv_uplink_idx = service_bridge['if_uplink_idx']
-                    dst_idx = srv_uplink_idx
-                    self.vppf.vpp.enable_port_mirroring(source_port_idx,
-                                                        srv_uplink_idx,
-                                                        direction)
-
-                    # Set the tap_flow state in etcd
-                    data = {"tf": data,
-                            "service_bridge": service_bridge,
-                            "port_idx": source_port_idx,
-                            'dst_idx': dst_idx,
-                            'span_mode': 1,  # vlan
-                            'tfn': True
-                            }
-                else:
-                    # Set the tap_flow state in etcd
-                    data = {"tf": data,
-                            'span_mode': 1,  # vlan
-                            'tfn': False
-                            }
-
-            # Remote Span via vxlan
+        if dest_type == 'ERSPAN_EXT' or dest_type == 'ERSPAN_INT':
+            tap_srv_id = data['tap_flow']['tap_service_id']
+            ts_host = ''
+            if dest_type == 'ERSPAN_INT':
+                ts_host = data['ts_host']
+                ts_path = (LEADIN + '/state_taas/' + ts_host +
+                           '/taas_service/' + tap_srv_id)
             else:
-                if self._host == tf_host:
-                    dst_adr = self._get_remote_addr(data['ts_port_mac'])
+                ts_path = (LEADIN + '/global' +
+                           '/taas_service/' + tap_srv_id)
+            try:
+                ts_info = jsonutils.loads(self.etcd_client.read(ts_path).value)
+                if dest_type == 'ERSPAN_INT':
+                    physnet = ts_info['service_bridge']['physnet']
+                    esp_dst_addr = \
+                        ts_info['ts']['tap_service']['erspan_dst_ip']
                 else:
-                    dst_adr = self._get_remote_addr(data['port_mac'])
+                    physnet = self.esp_physnet
+                    esp_dst_addr = ts_info['tap_service']['erspan_dst_ip']
+                network_type = 'vlan'
+                esp_src_addr = self.esp_src_addr
+                # esp_dst_addr = ts_info['tap_service']['erspan_dst_ip']
+                esp_session_id = data['tap_flow']['erspan_session_id']
+                esp_plen = self.esp_plen
+                if ip_network(six.text_type(esp_dst_addr)).version == 6:
+                    esp_isv6 = 1
+                else:
+                    esp_isv6 = 0
+
+                # Create the ERSpan tunnel
+                tun_idx = self._create_erspan_tunnel(
+                    esp_src_addr, esp_dst_addr, esp_session_id)
+
+                tf_host = data['tf_host']
                 source_port_idx = self._find_port_idx(
                     data['tap_flow']['source_port'], tf_host)
-                vni = taas_id
-                tun_idx = self._create_vxlan_tunnel(dst_adr, vni)
-                # source_port_idx = -1
-                if self._host == tf_host:
-                    tfn = True
-                    self.vppf.vpp.cross_connect(tun_idx, 0)
-                    self.vppf.vpp.enable_port_mirroring(source_port_idx,
-                                                        tun_idx,
-                                                        direction)
-                else:
-                    tfn = False
-                    bd_idx = taas_id + 64000
-                    self.vppf.vpp.add_to_bridge(bd_idx,
-                                                tun_idx)
 
+                # Mirror the src port to the ERSpan tunnel
+                self.vppf.vpp.enable_port_mirroring(source_port_idx,
+                                                    tun_idx,
+                                                    direction)
+
+                if dest_type == 'ERSPAN_EXT':
+                    self._ensure_ext_link()
+                    loop_idx = -1
+                elif dest_type == 'ERSPAN_INT':
+                    # Create or find the TF bridge
+                    bridge_data = self.vppf.ensure_network_on_host(
+                        physnet,
+                        network_type,
+                        data['taas_id'])
+
+                    # Connect the tunnel to the bridge
+                    self.vppf.vpp.add_to_bridge(
+                        bridge_data['bridge_domain_id'],
+                        tun_idx)
+
+                    # Create the loopback intf as BVI for TF bridge
+                    loop_idx = self.vppf.vpp.get_bridge_bvi(
+                        bridge_data['bridge_domain_id'])
+                    if loop_idx is None:
+                        loop_idx = self.vppf.vpp.create_loopback()
+                        self.vppf.vpp.set_loopback_bridge_bvi(
+                            loop_idx, bridge_data['bridge_domain_id'])
+                        self.vppf.vpp.set_interface_vrf(loop_idx, 0, esp_isv6)
+                        self.vppf.vpp.set_interface_ip(
+                            loop_idx,
+                            self.vppf._pack_address(esp_src_addr),
+                            int(esp_plen),
+                            esp_isv6)
+                        self.vppf.vpp.add_ip_route(
+                            0, self.vppf._pack_address(esp_dst_addr),
+                            int(esp_plen), None, loop_idx, esp_isv6, False)
+                        self.vppf.vpp.ifup(loop_idx)
+
+                # Activate the ERspan tunnel
                 self.vppf.vpp.ifup(tun_idx)
+
                 # Set the tap_flow state in etcd
                 data = {"tf": data,
                         "dst_idx": tun_idx,
                         "port_idx": source_port_idx,
-                        'span_mode': 2,  # vxlan
-                        'tfn': tfn,
-                        'dst_adr': dst_adr,
-                        'vni': vni
+                        'span_mode': 3,  # ERSPAN
+                        'dst_adr': esp_dst_addr,
+                        'session_id': esp_session_id,
+                        'loop_idx': loop_idx,
+                        'physnet': physnet,
+                        'ts_host': ts_host
                         }
 
-            self.etcd_client.write(self._state_key_space +
-                                   '/%s' % flow_id,
-                                   jsonutils.dumps(data))
-        except etcd.EtcdKeyNotFound:
-            pass
+                self.etcd_client.write(self._state_key_space +
+                                       '/%s' % flow_id,
+                                       jsonutils.dumps(data))
+
+            except etcd.EtcdKeyNotFound:
+                pass
+        else:
+            taas_id = data['taas_id']
+            ts_host = data['ts_host']
+            tf_host = data['tf_host']
+
+            tap_srv_id = data['tap_flow']['tap_service_id']
+            ts_path = (LEADIN + '/state_taas/' + ts_host +
+                       '/taas_service/' + tap_srv_id)
+            try:
+                ts_info = jsonutils.loads(self.etcd_client.read(ts_path).value)
+                network_type = ts_info['service_bridge']['network_type']
+                physnet = ts_info['service_bridge']['physnet']
+
+                if network_type != 'vxlan':
+                    network_type = 'vlan'
+
+                # Check if tapflow and tapservice are located in the same node
+                # Local Span
+                if ts_host == tf_host:
+                    source_port_idx = self._find_port_idx(
+                        data['tap_flow']['source_port'], tf_host)
+                    srv_port_idx = ts_info['port']['iface_idx']
+                    # Local Span
+                    dst_idx = srv_port_idx
+                    self.vppf.vpp.enable_port_mirroring(source_port_idx,
+                                                        srv_port_idx,
+                                                        direction)
+                    # Set the tap_flow state in etcd
+                    data = {"tf": data,
+                            "port_idx": source_port_idx,
+                            'dst_idx': dst_idx,
+                            'span_mode': 0,  # Local
+                            'tfn': True
+                            }
+                # Remote Span via vlan
+                elif network_type == 'vlan':
+                    if self._host == tf_host:
+                        source_port_idx = self._find_port_idx(
+                            data['tap_flow']['source_port'], tf_host)
+
+                        # get/create a numbered bridge domain for the service
+
+                        service_bridge = self.vppf.ensure_network_on_host(
+                            physnet, network_type, taas_id)
+                        service_bridge_id = service_bridge['bridge_domain_id']
+                        self.vppf.vpp.bridge_enable_flooding(service_bridge_id)
+
+                        # Remote Span
+                        srv_uplink_idx = service_bridge['if_uplink_idx']
+                        dst_idx = srv_uplink_idx
+                        self.vppf.vpp.enable_port_mirroring(source_port_idx,
+                                                            srv_uplink_idx,
+                                                            direction)
+
+                        # Set the tap_flow state in etcd
+                        data = {"tf": data,
+                                "service_bridge": service_bridge,
+                                "port_idx": source_port_idx,
+                                'dst_idx': dst_idx,
+                                'span_mode': 1,  # vlan
+                                'tfn': True
+                                }
+                    else:
+                        # Set the tap_flow state in etcd
+                        data = {"tf": data,
+                                'span_mode': 1,  # vlan
+                                'tfn': False
+                                }
+
+                # Remote Span via vxlan
+                else:
+                    if self._host == tf_host:
+                        dst_adr = self._get_remote_addr(data['ts_port_mac'])
+                    else:
+                        dst_adr = self._get_remote_addr(data['port_mac'])
+                    source_port_idx = self._find_port_idx(
+                        data['tap_flow']['source_port'], tf_host)
+                    vni = taas_id
+                    tun_idx = self._create_vxlan_tunnel(dst_adr, vni)
+                    # source_port_idx = -1
+                    if self._host == tf_host:
+                        tfn = True
+                        self.vppf.vpp.cross_connect(tun_idx, 0)
+                        self.vppf.vpp.enable_port_mirroring(source_port_idx,
+                                                            tun_idx,
+                                                            direction)
+                    else:
+                        tfn = False
+                        bd_idx = taas_id + 64000
+                        self.vppf.vpp.add_to_bridge(bd_idx,
+                                                    tun_idx)
+
+                    self.vppf.vpp.ifup(tun_idx)
+                    # Set the tap_flow state in etcd
+                    data = {"tf": data,
+                            "dst_idx": tun_idx,
+                            "port_idx": source_port_idx,
+                            'span_mode': 2,  # vxlan
+                            'tfn': tfn,
+                            'dst_adr': dst_adr,
+                            'vni': vni
+                            }
+
+                self.etcd_client.write(self._state_key_space +
+                                       '/%s' % flow_id,
+                                       jsonutils.dumps(data))
+            except etcd.EtcdKeyNotFound:
+                pass
 
     def removed(self, key):
         # Removing key == desire to unbind
@@ -392,39 +607,67 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                 self.etcd_client.read(taas_path).value)
 
             span_mode = tap_flow_info['span_mode']
-            tfn = tap_flow_info['tfn']
-            if tfn:
-                dst_idx = tap_flow_info['dst_idx']
-                source_port_idx = tap_flow_info['port_idx']
-                self.vppf.vpp.disable_port_mirroring(source_port_idx,
-                                                     dst_idx)
+            if span_mode == 3:  # ERSPAN
+                    dest_type = tap_flow_info['tf']['dest_type']
+                    dst_idx = tap_flow_info['dst_idx']
+                    source_port_idx = tap_flow_info['port_idx']
+                    self.vppf.vpp.disable_port_mirroring(source_port_idx,
+                                                         dst_idx)
+                    if dest_type == 'ERSPAN_INT':
+                        self.vppf.vpp.delete_from_bridge(dst_idx)
+                    taas_id = tap_flow_info['tf']['taas_id']
+                    tf_host = tap_flow_info['tf']['tf_host']
+                    ts_host = tap_flow_info['ts_host']
+                    session_id = tap_flow_info['session_id']
+                    dst_addr = tap_flow_info['dst_adr']
+                    src_addr = self.esp_src_addr
+                    self._delete_erspan_tunnel(src_addr, dst_addr, session_id)
+                    if dest_type == 'ERSPAN_INT':
+                        tf_nb = self._get_num_flow(tf_host, taas_id)
+                        if tf_nb == 0:
+                            loop_idx = tap_flow_info['loop_idx']
+                            self.vppf.vpp.delete_loopback(loop_idx)
+                            if tf_host != ts_host:
+                                physnet = tap_flow_info['physnet']
+                                net_type = 'vlan'
+                                seg_id = taas_id
+                                self.vppf.delete_network_on_host(
+                                    physnet, net_type, seg_id)
+            else:
+                tfn = tap_flow_info['tfn']
+                if tfn:
+                    dst_idx = tap_flow_info['dst_idx']
+                    source_port_idx = tap_flow_info['port_idx']
+                    self.vppf.vpp.disable_port_mirroring(source_port_idx,
+                                                         dst_idx)
 
-            if span_mode == 1 and tfn:
-                service_bridge = tap_flow_info['service_bridge']
+                if span_mode == 1 and tfn:
+                    service_bridge = tap_flow_info['service_bridge']
 
-                physnet = service_bridge['physnet']
-                net_type = service_bridge['network_type']
-                seg_id = service_bridge['segmentation_id']
-                # check if the local service bridge needs to be removed
-                spans = self.vppf.vpp.dump_port_mirroring()
-                cnt = 0
-                for sp in spans:
-                    if sp.sw_if_index_to == dst_idx:
-                        cnt += 1
-                if cnt == 0:
-                    self.vppf.delete_network_on_host(physnet, net_type, seg_id)
+                    physnet = service_bridge['physnet']
+                    net_type = service_bridge['network_type']
+                    seg_id = service_bridge['segmentation_id']
+                    # check if the local service bridge needs to be removed
+                    spans = self.vppf.vpp.dump_port_mirroring()
+                    cnt = 0
+                    for sp in spans:
+                        if sp.sw_if_index_to == dst_idx:
+                            cnt += 1
+                    if cnt == 0:
+                        self.vppf.delete_network_on_host(
+                            physnet, net_type, seg_id)
 
-            elif span_mode == 2:  # vxlan
-                taas_id = tap_flow_info['tf']['taas_id']
-                tf_host = tap_flow_info['tf']['tf_host']
-                tf_nb = self._get_num_flow(tf_host, taas_id)
-                if tf_nb == 0:
-                    if tfn is False:
-                        self.vppf.vpp.delete_from_bridge(
-                            tap_flow_info['dst_idx'])
-                    vni = tap_flow_info['vni']
-                    dst_adr = tap_flow_info['dst_adr']
-                    self._delete_vxlan_tunnel(dst_adr, vni)
+                elif span_mode == 2:  # vxlan
+                    taas_id = tap_flow_info['tf']['taas_id']
+                    tf_host = tap_flow_info['tf']['tf_host']
+                    tf_nb = self._get_num_flow(tf_host, taas_id)
+                    if tf_nb == 0:
+                        if tfn is False:
+                            self.vppf.vpp.delete_from_bridge(
+                                tap_flow_info['dst_idx'])
+                        vni = tap_flow_info['vni']
+                        dst_adr = tap_flow_info['dst_adr']
+                        self._delete_vxlan_tunnel(dst_adr, vni)
 
             self.etcd_client.delete(self._state_key_space +
                                     '/%s' % flow_id)
