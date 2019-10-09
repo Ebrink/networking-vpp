@@ -43,7 +43,7 @@ except ImportError:
     from neutron.db.models.l3 import Router
 
 from networking_vpp.db import db
-from networking_vpp.mech_vpp import EtcdAgentCommunicator
+from networking_vpp.mech_vpp import JournalManager
 
 LOG = logging.getLogger(__name__)
 
@@ -69,8 +69,7 @@ class VppL3RouterPlugin(common_db_mixin.CommonDbMixin,
 
     def __init__(self):
         super(VppL3RouterPlugin, self).__init__()
-        self.communicator = EtcdAgentCommunicator(
-            notify_bound=lambda *args: None)
+        self.communicator = JournalManager()
         self.l3_hosts = cfg.CONF.ml2_vpp.l3_hosts.replace(' ', '').split(',')
         self.gpe_physnet = cfg.CONF.ml2_vpp.gpe_locators
         LOG.info('vpp-router: router_service plugin has initialized')
