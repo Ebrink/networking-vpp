@@ -3709,8 +3709,7 @@ class BindNotifier(object):
                 LOG.exception("exception in bind-notify thread")
                 # If there are problems, retry the notification later.
                 # There's no issue if we do this multiple times.
-                self.add_notification(ent)
-                pass
+                self.add_notification(port, props)
 
 
 class VPPRestart(object):
