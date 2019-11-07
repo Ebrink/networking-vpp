@@ -23,7 +23,11 @@ import grp
 import ipaddress
 # logging is included purely for typechecks and pep8 objects to its inclusion
 import logging  # noqa
+from networking_vpp import constants as nvpp_const
 import os
+# Pep8 check fails, if json is used instead of jsonutils
+from oslo_serialization import jsonutils
+import pkgutil
 import pwd
 import six
 import sys
@@ -109,6 +113,25 @@ def singleton(cls):
             instances[cls] = cls(*args, **kwargs)
         return instances[cls]
     return getinstance
+
+
+def get_api_messages():
+    # Returns a tuple. (List of PAPI_calls+CRCs , List of whitelisted APIs)
+    manifest, whitelist = [], []
+    # Get the data files regardless of where or how the package has been
+    # installed
+    try:
+        manifest_data = pkgutil.get_data('networking_vpp',
+                                         nvpp_const.API_MANIFEST_FILE)
+        whitelist_data = pkgutil.get_data('networking_vpp',
+                                          nvpp_const.API_WHITELIST_FILE)
+        manifest, whitelist = (jsonutils.loads(manifest_data),
+                               jsonutils.loads(whitelist_data))
+    except Exception:
+        # If the files cannot be located or loaded, empty data will be
+        # returned, which will cause the agent to log an error and exit
+        pass
+    return (manifest, whitelist)
 
 
 @singleton
@@ -386,6 +409,38 @@ class VPPInterface(object):
 
         self._vpp.connect("python-VPPInterface",
                           **args)
+        # VPP API manifest and API whitelist
+        message_table, self.api_whitelist = get_api_messages()
+        if not message_table or not self.api_whitelist:
+            self.LOG.error("Unable to load VPP API files: %s, %s",
+                           nvpp_const.API_MANIFEST_FILE,
+                           nvpp_const.API_WHITELIST_FILE)
+            # The vpp-agent requires both the API manifest and whitelist files
+            # to start
+            sys.exit(1)
+        try:
+            self.LOG.debug("Validating VPP API messages")
+            api_changes = self._vpp.validate_message_table(message_table)
+            if api_changes:
+                # All changed VPP APIs
+                updated = ['_'.join(api.split('_')[:-1])
+                           for api in api_changes]
+                # Changed VPP whitelisted APIs
+                changed_apis = []
+                # Check if any of the whitelisted APIs have changed
+                for api in self.api_whitelist:
+                    if api in updated:
+                        changed_apis.append(api)
+                if changed_apis:
+                    self.LOG.critical("VPP API signature mismatch: %s",
+                                      changed_apis)
+                else:
+                    self.LOG.info("Successfully validated VPP API CRCs")
+        except AttributeError:
+            # message table validation is unsupported by VPP
+            self.LOG.critical("VPP does not support message "
+                              "CRC validation")
+            sys.exit(1)
 
     def call_vpp(self, func, *args, **kwargs):
         # Disabling to prevent message debug flooding
@@ -405,6 +460,12 @@ class VPPInterface(object):
             # there is just uncomment them below:
             # self.LOG.debug("Switching to old way of invoking VPP APIs")
             # self.LOG.debug(e)
+
+        # Ensure that the API is whitelisted, if not don't proceed
+        if func not in self.api_whitelist:
+            self.LOG.critical('VPP func_call %s is not whitelisted in %s',
+                              func, nvpp_const.API_WHITELIST_FILE)
+            sys.exit(1)
 
         try:
             t = func_call(*args, **kwargs)

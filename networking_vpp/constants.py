@@ -24,3 +24,5 @@ GPE_UDP_PORT = 4790
 GPE_ENCAP_OVERHEAD = 30
 MIN_GPE_VNI = 1
 MAX_GPE_VNI = 2 ** 24 - 1
+API_MANIFEST_FILE = 'vpp-api-files/vpp_api_manifest.json'
+API_WHITELIST_FILE = 'vpp-api-files/vpp_api_whitelist.json'
