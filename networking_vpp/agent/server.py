@@ -833,7 +833,8 @@ class VPPForwarder(object):
         to the bridge.
         """
         try:
-            for dev_name in self.external_devices.popleft():
+            while self.external_devices:
+                dev_name = self.external_devices.popleft()
                 port_id = dev_name[3:]
                 bridge_name = "br-%s" % port_id
                 self.ensure_tap_in_bridge(dev_name, bridge_name)
