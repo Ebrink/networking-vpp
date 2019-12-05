@@ -73,9 +73,18 @@ def fix_string(s):
     # string type for printable strings, so no longer the need for the funny
     # chopping off of 0's at the end. But this function will still act as the
     # boundary at which input is converted to string type.
+    #
     # TODO(onong): move to common file in phase 2
     # This consistently returns a string in py2 and 3, and since we know
     # the input is binary ASCII we can safely make the cast in py2.
+    #
+    #
+    # Note(onong): VPP 19.08.1 onwards interface_name and tag fields are type
+    # "string" instead of the earlier "u8". Alas, this change happened only
+    # for the sw_interface_dump/sw_interface_details API pair which implies
+    # fix_string is still needed in the other places it is in use currently.
+    # Once the other APIs too change to "string" type, fix_string may/will no
+    # longer be needed.
     return str(s.decode('ascii').rstrip('\0'))
 
 
@@ -156,8 +165,19 @@ class VPPInterface(object):
 
         for iface in t:
             mac = bytearray(iface.l2_address[:iface.l2_address_length])
-            yield {'name': fix_string(iface.interface_name),
-                   'tag': fix_string(iface.tag),
+            # Note(onong): VPP 19.08.1 onwards interface_name and tag fields
+            # are type "string" instead of the earlier "u8". In python3, PAPI
+            # converts "string" type to python str whereas in python2 it
+            # converts to Unicode. So, no need for fix_string on interface_name
+            # and tag fields anymore.
+            #
+            # NB: PLEASE READ THIS: the current usage of interface_name and tag
+            # in the rest of the code does not pose any problems in python2 but
+            # for any new usage case please make sure to understand that the
+            # said fields are "Unicode" and not "bytes/str" in python2 from VPP
+            # 19.08.1 onwards.
+            yield {'name': iface.interface_name,
+                   'tag': iface.tag,
                    'mac': ':'.join(["%02x" % int(c) for c in mac]),
                    'sw_if_idx': iface.sw_if_index,
                    'sup_sw_if_idx': iface.sup_sw_if_index
