@@ -197,7 +197,14 @@ class VPPInterface(object):
         self.call_vpp('sw_interface_tag_add_del',
                       is_add=1,
                       sw_if_index=if_idx,
-                      tag=binary_type(tag))
+                      # Note(onong): VPP 19.08.1 onwards, the 'tag' field is
+                      # of type 'string' and PAPI cribs if it is passed the old
+                      # bytes/str type in python3.
+                      #
+                      # What about python2?
+                      # Well, python2 is pretty cool about the intermingling of
+                      # bytes/str/unicode and hence things work fine.
+                      tag=tag)
 
     def get_version(self):
         # type: () -> str
