@@ -31,11 +31,13 @@ EOF
   # startup conf yet, stop the service it will be started later
   stop_service vpp || true
 
-  # python api package name was renamed in 17.04, try to install both
-  install_package vpp-python-api || install_package vpp-api-python
+  # install the python3 papi package (Centos and Ubuntu pkg names differ)
+  install_package python3-vpp-api || install_package vpp-api-python3
+
   # From 19.04, we need an additional pip package for vpp-api-python,
   # and it doesn't properly depend upon it
   pip_install aenum
+
   # plugins are required to support security groups
   # (names changed post-19.01)
   install_package vpp-plugins || install_package vpp-plugin-core vpp-plugin-dpdk
