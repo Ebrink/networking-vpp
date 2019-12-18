@@ -1553,15 +1553,15 @@ class VPPInterface(object):
 
     def set_snat_static_mapping(self, local_ip, external_ip, tenant_vrf,
                                 is_add=1):
-        # TODO(onong): watch out for py3
+        # Note(onong): watch out for py3
         # In py3 str() will give unicode and not bytes and the API expects a
         # bytes like object. local_ip and external_ip are coming from neutron
         # and they are of type unicode. We need to convert it into bytes like
         # object. str() works on py27 bcoz str and bytes are the same. But on
         # py3, str is unicode so this will need changes in py3
-        local_ip = str(ipaddress.IPv4Address(local_ip).packed)
-        external_ip = str(ipaddress.IPv4Address(external_ip).packed)
         if self.ver_ge(19, 8):
+            local_ip = ipaddress.IPv4Address(local_ip).packed
+            external_ip = ipaddress.IPv4Address(external_ip).packed
             self.call_vpp('nat44_add_del_static_mapping',
                           local_ip_address=local_ip,
                           external_ip_address=external_ip,
@@ -1572,6 +1572,8 @@ class VPPInterface(object):
                           vrf_id=tenant_vrf,
                           is_add=is_add)    # 1 = add, 0 = delete
         else:
+            local_ip = str(ipaddress.IPv4Address(local_ip).packed)
+            external_ip = str(ipaddress.IPv4Address(external_ip).packed)
             self.call_vpp('nat44_add_del_static_mapping',
                           local_ip_address=local_ip,
                           external_ip_address=external_ip,
