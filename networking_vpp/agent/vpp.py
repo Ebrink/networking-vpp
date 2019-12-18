@@ -1520,8 +1520,10 @@ class VPPInterface(object):
                 break
         # A NAT session exists if the user_vrf is set
         if user_vrf is not None:
-            # TODO(onong): watch out in py3
-            packed_ip_addr = str(ipaddress.IPv4Address(ip_addr).packed)
+            # Note(onong): nat44_user_session_dump expects the binary IPv4
+            # address and IPv4Address(ip_addr).packed works fine for python2 as
+            # well as python3; no need for str(...)
+            packed_ip_addr = ipaddress.IPv4Address(ip_addr).packed
             user_sessions = self.call_vpp('nat44_user_session_dump',
                                           ip_address=packed_ip_addr,
                                           vrf_id=user_vrf
