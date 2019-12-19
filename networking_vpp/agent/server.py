@@ -3460,7 +3460,8 @@ class RouterWatcher(etcdutils.EtcdChangeWatcher):
             else:
                 self.data.vppf.become_backup_router()
             # Update remote mappings for GPE bound router ports
-            self.data.gpe_listener.update_router_gpe_mappings()
+            if self.data.gpe_listener:
+                self.data.gpe_listener.update_router_gpe_mappings()
 
     def removed(self, router_key):
         token1, token2 = self.parse_key(router_key)
