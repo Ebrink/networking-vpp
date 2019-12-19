@@ -1828,11 +1828,11 @@ class VPPForwarder(object):
                   loopback_mac, loopback_idx)
         return loopback_mac
 
-    def ensure_bridge_bvi(self, bridge_idx):
+    def ensure_bridge_bvi(self, bridge_idx, mac_address=None):
         """Ensure a BVI loopback interface for the bridge."""
         bvi_if_idx = self.vpp.get_bridge_bvi(bridge_idx)
         if not bvi_if_idx:
-            bvi_if_idx = self.vpp.create_loopback()
+            bvi_if_idx = self.vpp.create_loopback(mac_address)
             self.vpp.set_loopback_bridge_bvi(bvi_if_idx, bridge_idx)
         return bvi_if_idx
 
@@ -1889,9 +1889,10 @@ class VPPForwarder(object):
         # Ensure a BVI (i.e. A loopback) for the bridge domain
         loopback_idx = self.vpp.get_bridge_bvi(bridge_idx)
         # Create a loopback BVI interface
+        loopback_mac = router_data['loopback_mac']
         if not loopback_idx:
             # Create the loopback interface, but don't bring it UP yet
-            loopback_idx = self.ensure_bridge_bvi(bridge_idx)
+            loopback_idx = self.ensure_bridge_bvi(bridge_idx, loopback_mac)
         # Set the VRF for tenant BVI interfaces, if not already set
         if vrf and not self.vpp.get_interface_vrf(loopback_idx) == vrf:
             self.vpp.set_interface_vrf(loopback_idx, vrf, is_ipv6)
@@ -1901,8 +1902,6 @@ class VPPForwarder(object):
         except SystemExit:
             # Log error and continue, do not exit here
             LOG.error("Error setting MTU on router interface")
-        # Get the mac address for the route BVI loopback interface
-        loopback_mac = self._get_loopback_mac(loopback_idx)
         ha_enabled = cfg.CONF.ml2_vpp.enable_l3_ha
         if ha_enabled:
             # Now bring up the loopback interface, if this router is the
