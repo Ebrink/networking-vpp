@@ -22,8 +22,8 @@ from networking_vpp.compat import driver_api
 from networking_vpp.compat import n_exc
 from networking_vpp.db.models import GpeAllocation
 
-from neutron.db import api as db_api
 from neutron.plugins.ml2.drivers import helpers
+from neutron_lib.db import api as db_api
 from oslo_config import cfg
 from oslo_log import log as logging
 from six import moves
@@ -153,9 +153,10 @@ class GpeTypeDriver(helpers.SegmentTypeDriver):
                 raise n_exc.InvalidInput(error_message=msg)
         self._verify_gpe_vni(segmentation_id)
 
-    def reserve_provider_segment(self, session, segment):
+    def reserve_provider_segment(self, session, segment, filters=None):
         if self.is_partial_segment(segment):
-            alloc = self.allocate_partially_specified_segment(session)
+            alloc = self.allocate_partially_specified_segment(session,
+                                                              **filters)
             if not alloc:
                 raise n_exc.NoNetworkAvailable()
         else:
@@ -171,8 +172,9 @@ class GpeTypeDriver(helpers.SegmentTypeDriver):
                                                     self.segmentation_key),
                 driver_api.MTU: self.get_mtu()}
 
-    def allocate_tenant_segment(self, session):
-        alloc = self.allocate_partially_specified_segment(session)
+    def allocate_tenant_segment(self, session, **filters):
+        alloc = self.allocate_partially_specified_segment(session,
+                                                          **filters)
         if not alloc:
             return
         return {driver_api.NETWORK_TYPE: self.get_type(),
