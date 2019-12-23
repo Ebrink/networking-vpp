@@ -172,7 +172,7 @@ class GpeTypeDriver(helpers.SegmentTypeDriver):
                                                     self.segmentation_key),
                 driver_api.MTU: self.get_mtu()}
 
-    def allocate_tenant_segment(self, session, **filters):
+    def allocate_tenant_segment(self, session, filters=None):
         alloc = self.allocate_partially_specified_segment(session,
                                                           **filters)
         if not alloc:
