@@ -1,17 +1,12 @@
 - project:
     name: x/networking-vpp
     templates:
-      # Temporary, since we're moving to python3
-      - openstack-python-jobs
+      - openstack-python3-ussuri-jobs
     check:
         jobs:
 #            - networking-vpp-tempest:
 #                voting: false
-            - networking-vpp-tox-mypy2:
-                voting: false
-            - networking-vpp-tox-mypy3:
-                voting: true
-            - openstack-tox-py35:
+            - networking-vpp-tox-mypy36:
                 voting: true
 
 - job:
@@ -55,18 +50,8 @@
             networking-vpp: https://opendev.org/x/networking-vpp
 
 - job:
-    name: networking-vpp-tox-mypy2
-    parent: openstack-tox
-    description: |
-        Runs mypy as if for Python v2 code.
-    required-projects:
-        - name: x/networking-vpp
-    vars:
-        tox_envlist: mypy2
-
-- job:
-    name: networking-vpp-tox-mypy3
-    parent: openstack-tox
+    name: networking-vpp-tox-mypy36
+    parent: openstack-tox-py36
     description: |
         Runs mypy as if for Python v3 code.
     required-projects:
