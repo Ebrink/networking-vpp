@@ -14,6 +14,7 @@
 #    under the License.
 
 from __future__ import absolute_import
+import errno
 import logging
 import os
 import six
@@ -246,6 +247,7 @@ class DeviceMonitor(object):
                         LOG.warning('Received incomplete message from'
                                     ' NETLINK, dropping')
 
+        addr_offset = 0
         while True:
             s = None
             try:
@@ -253,7 +255,19 @@ class DeviceMonitor(object):
                 s = socket.socket(socket.AF_NETLINK,
                                   socket.SOCK_RAW,
                                   socket.NETLINK_ROUTE)
-                s.bind((os.getpid(), RTMGRP.LINK))
+
+                # Our task is to find a unique number for the socket.  Other
+                # processes can use whatever number they like, so the offset
+                # is used to manage possible conflicts.
+                while True:
+                    try:
+                        s.bind((addr_offset << 16 | os.getpid(), RTMGRP.LINK))
+                        break
+                    except OSError as e:
+                        if e.errno == errno.EADDRINUSE:
+                            LOG.warning(
+                                'Trying another address for netlink socket')
+                            addr_offset += 1
 
                 # Re-issue a 'tell me all your interfaces' request, allowing
                 # us to resync with either initial state or missed change

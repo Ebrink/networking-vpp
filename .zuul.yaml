@@ -1,5 +1,8 @@
 - project:
     name: x/networking-vpp
+    templates:
+      # Temporary, since we're moving to python3
+      - openstack-python-jobs
     check:
         jobs:
 #            - networking-vpp-tempest:
@@ -7,9 +10,9 @@
             - networking-vpp-tox-mypy2:
                 voting: false
             - networking-vpp-tox-mypy3:
-                voting: false
+                voting: true
             - openstack-tox-py35:
-                voting: false
+                voting: true
 
 - job:
     name: networking-vpp-tempest
