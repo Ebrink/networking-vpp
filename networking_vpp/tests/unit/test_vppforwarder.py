@@ -385,8 +385,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             self.vpp.vpp.set_interface_vrf.assert_called_once_with(
                 loopback_idx, router['vrf_id'], router['is_ipv6'])
             self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                loopback_idx, self.vpp._pack_address(router['gateway_ip']),
-                router['prefixlen'], router['is_ipv6'])
+                loopback_idx, router['gateway_ip'], router['prefixlen'])
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
@@ -428,8 +427,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     self.vpp.vpp.set_loopback_bridge_bvi.assert_not_called()
                     self.vpp.vpp.set_interface_vrf.assert_not_called()
                     self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                        5, self.vpp._pack_address(router['gateway_ip']),
-                        router['prefixlen'], router['is_ipv6'])
+                        5, router['gateway_ip'], router['prefixlen'])
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
@@ -486,8 +484,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.delete_router_interface_on_host(port)
         self.vpp.vpp.delete_loopback.assert_not_called()
         self.vpp.vpp.del_interface_ip.assert_called_once_with(
-            5, self.vpp._pack_address(gateway_ip),
-            prefixlen, router_port['is_ipv6'])
+            5, gateway_ip, prefixlen)
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
@@ -505,8 +502,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
                 self.vpp.vpp.set_snat_on_interface.assert_called_once_with(
                     5, 0)
                 self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                    5, self.vpp._pack_address(router['gateways'][0][0]),
-                    router['gateways'][0][1], router['gateways'][0][2])
+                    5, router['gateways'][0][0], router['gateways'][0][1])
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
@@ -522,8 +518,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     uuidgen.uuid1(), router)
                 self.vpp.vpp.set_snat_on_interface.assert_not_called()
                 self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                    5, self.vpp._pack_address(router['gateways'][0][0]),
-                    router['gateways'][0][1], router['gateways'][0][2])
+                    5, router['gateways'][0][0], router['gateways'][0][1])
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
@@ -532,7 +527,6 @@ class VPPForwarderTestCase(base.BaseTestCase):
         router = self._get_mock_external_router()
         interface_ip = router['gateways'][0][0]
         prefixlen = router['gateways'][0][1]
-        is_ipv6 = router['gateways'][0][2]
         m_network_on_host.return_value = {'bridge_domain_id': 'fake_dom_id'}
         with mock.patch.object(self.vpp.vpp, 'get_bridge_bvi',
                                return_value=5):
@@ -545,8 +539,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         uuidgen.uuid1(), router)
                     self.vpp.vpp.set_snat_on_interface.assert_not_called()
                     self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                        5, self.vpp._pack_address(interface_ip),
-                        prefixlen, is_ipv6)
+                        5, interface_ip, prefixlen)
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
