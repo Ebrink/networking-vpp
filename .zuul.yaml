@@ -1,5 +1,4 @@
 - project:
-    name: x/networking-vpp
     templates:
       - openstack-python3-ussuri-jobs
     check:
