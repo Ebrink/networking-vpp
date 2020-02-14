@@ -290,20 +290,6 @@ class VPPInterface(object):
         self.call_vpp('tap_delete_v2',
                       sw_if_index=idx)
 
-    def get_taps(self):
-        # type: () -> Iterator[dict]
-        t = self.call_vpp('sw_interface_tap_dump')
-        for iface in t:
-            yield {'dev_name': fix_string(iface.dev_name),
-                   'sw_if_idx': iface.sw_if_index}
-
-    def is_tap(self, iface_idx):
-        # type: (int) -> bool
-        for tap in self.get_taps():
-            if tap['sw_if_index'] == iface_idx:
-                return True
-        return False
-
     #############################
 
     def create_vhostuser(self, ifpath, mac, tag,
