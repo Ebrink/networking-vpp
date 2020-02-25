@@ -604,37 +604,23 @@ we will be increasing the coverage of the unit tests, as well as
 enhancing the types of system/integration tests that we run, e.g.
 negative testing, compatibility testing, etc.
 
-What's new in the 19.08.1 release?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What's new in the 20.01 release?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the 19.08.1 release, we've made the below changes:
+In the 20.01 release, we've made the below changes:
 
-- We've added ERSPAN support for Tap-as-a-Service (TaaS). Since ERSPAN provides
-  remote port mirroring, you can now mirror your OpenStack traffic to a
-  destination outside of OpenStack or to a remote OpenStack VM.
-  This is a customized version of OpenStack TaaS. We will be working with the
-  community to push our custom TaaS extensions upstream. In the meantime, you
-  can access our TaaS code at https://github.com/jbeuque/tap-as-a-service .
-  For further info on installation and usage, you can read the README_taas.txt.
+- We've dropped support for Python 2.7 and updated the code to work with
+  Python 3.6 or later releases.
 
-- We've updated the code to be compatible with VPP 19.08 & 19.08.1 API changes.
+- We've updated the code to be compatible with VPP 20.01 API changes.
 
-- We've updated the unit test framework to support python3.5 onwards.
+- We've added VPP API versioning support using 2 data files. They are
+  API whitelist file and API CRC manifest file. At startup, the vpp-agent
+  will check to see if the API signature is compatible with the installed VPP.
+  Also, at runtime, only the whitelisted API calls will be allowed.
 
-- We've added security-group support for Trunk sub-ports and added support for
-  neutron trunk_details extension.
-
-- We've fixed bugs in our Trunk and L3 plugins that caused a race condition
-  during port binding.
-
-- We've migrated our repo from Openstack to Opendev to be consistent with
-  OpenStack rebranding efforts.
-
-- A recent change in nova caused live migration to fail for instances with
-  NUMA characteristics. This is a limitation in nova and not VPP/networking-vpp.
-  However, it is still possible to use live migration with VPP/networking-vpp.
-  Please refer to an earlier section in this file for further details.
+- We've fixed an issue with the eventlet that caused problems when binding
+  tap interfaces into Linux bridge.
 
 - We've been doing the usual round of bug fixes, clean-ups and updates - the
-  code will work with VPP 19.08.1 and has been updated to keep up with Neutron
-  Rocky and Stein.
+  code will work with VPP 20.01 and the OpenStack Stein release.
