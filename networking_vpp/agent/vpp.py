@@ -381,8 +381,18 @@ class VPPInterface(object):
 
     ########################################
 
-    def __init__(self, log, vpp_cmd_queue_len=None, read_timeout=None):
-        # type: (logging.Logger, Optional[int], Optional[int]) -> None
+    def __init__(
+        self,
+        log,  # type: logging.Logger
+        vpp_cmd_queue_len=None,  # type: Optional[int]
+        read_timeout=None,  # type: Optional[int]
+        lock_type=Lock):
+        # lock_type is threading.Lock.  We need this here because
+        # regardless of the model that the rest of the program uses
+        # our vpp library spawns an independent thread and needs to lock
+        # messaging queues.  Eventlet, however, removes our ability
+        # to access conventional threading locks, and in this case we might
+        # want to use something other than what threading.Lock appears to be.
         self.LOG = log
         jsonfiles = []
         for root, dirnames, filenames in os.walk('/usr/share/vpp/api/'):
@@ -401,7 +411,7 @@ class VPPInterface(object):
             self.registered_callbacks[event] = []
 
         # NB: a real threading lock
-        self.event_q_lock = Lock()  # type: Lock
+        self.event_q_lock = lock_type()  # type: object
         self.event_q = []  # type: List[dict]
 
         args = {}

@@ -27,8 +27,11 @@ from __future__ import absolute_import
 import eventlet
 
 # We actually need to co-operate with a threaded callback in VPP, so
-# don't monkey patch the thread operations.
-eventlet.monkey_patch(thread=False)
+# we preserve the original threading.Lock type
+
+from threading import Lock
+real_thread_lock = Lock
+eventlet.monkey_patch()
 
 import binascii
 from collections import defaultdict
@@ -338,7 +341,8 @@ class VPPForwarder(object):
                  mac_age,
                  vpp_cmd_queue_len=None,
                  read_timeout=None):
-        self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len, read_timeout)
+        self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len, read_timeout,
+                                    lock_type=real_thread_lock)
 
         self.physnets = physnets
 
