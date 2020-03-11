@@ -761,10 +761,16 @@ class VPPForwarderTestCase(base.BaseTestCase):
         """
         floatingip_dict = self._get_mock_floatingip()
         self.vpp.vpp.get_snat_interfaces.return_value = [4, 5]
+        self.vpp.vpp.get_interface_vrf.return_value = 1
         mock.patch.object(self.vpp, '_get_snat_indexes',
                           return_value=(4, 5)).start()
-        self.vpp.vpp.get_snat_local_ipaddresses.return_value = (
-            [floatingip_dict['fixed_ip_address']])
+        value = mock.MagicMock()
+        value.local_ip_address = ip_address(
+            floatingip_dict['fixed_ip_address'])
+        value.external_ip_address = ip_address(
+            floatingip_dict['floating_ip_address'])
+        value.vrf_id = 1
+        self.vpp.vpp.get_snat_static_mappings.return_value = [value]
 
         self.vpp.associate_floatingip(floatingip_dict['floating_ip_address'],
                                       floatingip_dict)

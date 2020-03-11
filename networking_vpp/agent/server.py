@@ -2267,21 +2267,42 @@ class VPPForwarder(object):
     def _associate_floatingip(self, floatingip, fixedip_addr,
                               floatingip_addr, loopback_idx, external_idx):
         """Associate the floating ip address and update state."""
+
+        # It is possible that during a VPP+agent restart scenario, the tenant's
+        # VRF has not been set on the loopback
+        tenant_vrf = self.vpp.get_interface_vrf(loopback_idx)
+        if not tenant_vrf:
+            LOG.debug("Router: Tenant VRF:%s not been set yet", tenant_vrf)
+            return
+        else:
+            LOG.debug('Router: Tenant VRF:%s, floating IP:%s and bvi_idx:%s',
+                      tenant_vrf, floatingip_addr, loopback_idx)
+
         LOG.debug("Router: associating floatingip:%s with fixedip: %s "
                   "loopback_idx:%s, external_idx:%s", floatingip_addr,
                   fixedip_addr, loopback_idx, external_idx)
         snat_interfaces = self.vpp.get_snat_interfaces()
-
         if loopback_idx and loopback_idx not in snat_interfaces:
             self.vpp.set_snat_on_interface(loopback_idx)
         if external_idx and external_idx not in snat_interfaces:
             self.vpp.set_snat_on_interface(external_idx, is_inside=0)
-        tenant_vrf = self.vpp.get_interface_vrf(loopback_idx)
-        LOG.debug('Router: Tenant VRF:%s, floating IP:%s and bvi_idx:%s',
-                  tenant_vrf, floatingip_addr, loopback_idx)
-        # If needed, add the SNAT internal and external IP address mapping.
-        snat_local_ipaddresses = self.vpp.get_snat_local_ipaddresses()
-        if fixedip_addr not in snat_local_ipaddresses and tenant_vrf:
+        #
+        # For different tenants mapped to different VRFs, it is quite possible
+        # that the same fixed IP addr is mapped to different floating IP addrs,
+        # for example:
+        #
+        # (192.168.10.5, FIP1, VRF1)
+        # (192.168.10.5, FIP2, VRF2)
+        #
+        # So, we check for (localip, extip, tenenat_vrf) in VPP before creating
+        # the mapping.
+        (localip, extip) = (ipaddr(fixedip_addr), ipaddr(floatingip_addr))
+        add_nat_mapping = True
+        for m in self.vpp.get_snat_static_mappings():
+            if (localip == m.local_ip_address and
+                    extip == m.external_ip_address and tenant_vrf == m.vrf_id):
+                add_nat_mapping = False
+        if add_nat_mapping:
             LOG.debug("Router: setting 1:1 SNAT %s:%s in tenant_vrf:%s",
                       fixedip_addr, floatingip_addr, tenant_vrf)
             self.vpp.set_snat_static_mapping(fixedip_addr, floatingip_addr,
@@ -2290,7 +2311,11 @@ class VPPForwarder(object):
             self.vpp.clear_snat_sessions(fixedip_addr)
             self.floating_ips[floatingip]['tenant_vrf'] = tenant_vrf
             self.floating_ips[floatingip]['state'] = True
-        LOG.debug('Router: Associated floating IPs: %s', self.floating_ips)
+            LOG.debug('Router: Associated floating IP: %s',
+                      self.floating_ips[floatingip])
+        else:
+            LOG.debug('Router: SNAT 1:1 mapping already exists for floating'
+                      'IP: %s', self.floating_ips[floatingip])
 
     def associate_floatingip(self, floatingip, floatingip_dict):
         """Add the VPP configuration to support One-to-One SNAT.
