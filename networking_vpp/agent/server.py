@@ -140,9 +140,18 @@ def eventlet_lock(name):
 
 
 # TODO(onong): move to common file in phase 2
+# TODO(ijw): or remove, since py3 doesn't need the unicode fixup.
 def ipnet(ip):
     # type: (str) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
     return ipaddress.ip_network(six.text_type(ip))
+
+
+def ipnet_loose(ip, pfxlen):
+    # type: (str, int) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+    # Will make a network within which this address resides, even
+    # if it's not given the network address.
+    return ipaddress.ip_network(u'%s/%d' %
+                                (six.text_type(ip), pfxlen), strict=False)
 
 
 def ipaddr(ip):
@@ -152,6 +161,7 @@ def ipaddr(ip):
 
 def ipint(ip):
     # type: (str) -> Union[ipaddress.IPv4Interface, ipaddress.IPv6Interface]
+    # input: 1.2.3.4/24 e.g.
     return ipaddress.ip_interface(six.text_type(ip))
 
 ######################################################################
@@ -1270,6 +1280,7 @@ class VPPForwarder(object):
                       props['bind_type'])
         self.interfaces.pop(uuid)
 
+    # TODO(ijw) this *really* needs typing with the return value structure.
     def _to_acl_rule(self, r, d, a=2):
         """Convert a SecurityGroupRule to VPP ACL rule.
 
@@ -1286,7 +1297,7 @@ class VPPForwarder(object):
         d - Direction:  0 ==> ingress, 1 ==> egress
         a - Permit-Action: 1 == permit, 2 == reflexive;
         Default == 2
-        Return: VPP ACL Rule
+        Return: VPP-formatted ACL Rule
         """
         acl_rule = {}
         # If reflexive is False a = 1
@@ -1664,6 +1675,7 @@ class VPPForwarder(object):
             ip_version = _get_ip_version(ip)
             is_ipv6 = 1 if ip_version == 6 else 0
             ip_prefix = _get_ip_prefix_length(ip)
+            # This is the struct the VPP API accepts: note the packed address
             mac_ip_rules.append(
                 {'is_permit': 1,
                  'is_ipv6': is_ipv6,
@@ -2888,14 +2900,25 @@ class EtcdListener(object):
                 LOG.debug("remote_group_secgroups: %s",
                           self.vppf.remote_group_secgroups)
             # VPP API requires the IP addresses to be represented in binary
-            rules = [SecurityGroupRule(r['is_ipv6'],
-                                       ipaddr(ip_addr).packed,
-                                       ip_prefix_len,
-                                       r.get('remote_group_id', None),
-                                       r['protocol'],
-                                       r['port_min'],
-                                       r['port_max'])
-                     for ip_addr, ip_prefix_len in remote_ip_prefixes]
+            # At this point:
+            # 1. we convert to the form VPP likes - a packed address
+            # 2. we fix up the rule.  At this point it's what Neutron gave us
+            # and Neutron doesn't strictly check that the rule is a network
+            # address compatible with the mask, but VPP cares.  Our assumption
+            # is that only bits significant relative to the mask are intended
+            # to matter, though that's ill-defined in the Neutron API.
+
+            rules = []
+            for ip_addr, ip_prefix_len in remote_ip_prefixes:
+                net = ipnet_loose(ip_addr, int(ip_prefix_len))
+                packed_addr = net.network_address.packed
+                rules.append(SecurityGroupRule(r['is_ipv6'],
+                                               packed_addr,
+                                               ip_prefix_len,
+                                               r.get('remote_group_id', None),
+                                               r['protocol'],
+                                               r['port_min'],
+                                               r['port_max']))
             return rules
 
         ingress_rules, egress_rules = (
@@ -3803,7 +3826,7 @@ def main():
     ops = EtcdListener(cfg.CONF.host, client_factory, vppf, physnets)
 
     names = cfg.CONF.ml2_vpp.vpp_agent_extensions
-    if names is not '':
+    if names != '':
         mgr = ExtensionManager(
             'networking_vpp.vpp_agent.extensions',
             names,
