@@ -111,40 +111,65 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.assertEqual(ifname, 'test_iface')
         self.assertEqual(ifidx, 720)
 
-    @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_in_vpp')
-    def test_no_network_on_host(self, m_ensure_network_in_vpp):
+    def test_no_network_on_host(self):
         physnet = 'test'
-        self.vpp.ensure_network_on_host(physnet, 'flat', 0)
-        m_ensure_network_in_vpp.assert_called_once_with(physnet, 'flat', 0)
+        net_driver = self.vpp.net_driver
+        self.vpp.get_if_for_physnet = mock.MagicMock(return_value=("tap1", 10))
+        net_driver._ensure_flat_network = mock.MagicMock()
+        net_driver._ensure_vlan_network = mock.MagicMock()
+        net_driver._ensure_gpe_network = mock.MagicMock()
+        net_driver.ensure_network(physnet, 'flat', 0)
+        net_driver._ensure_flat_network.assert_called_with(physnet=physnet,
+                                                           segmentation_id=0,
+                                                           intf="tap1",
+                                                           ifidx=10)
+        net_driver.ensure_network(physnet, 'vlan', 100)
+        net_driver._ensure_vlan_network.assert_called_with(physnet=physnet,
+                                                           segmentation_id=100,
+                                                           intf="tap1",
+                                                           ifidx=10)
 
-    @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_in_vpp')
-    def test_yes_network_on_host(self, m_ensure_network_in_vpp):
+        net_driver.ensure_network(physnet, 'gpe', 1000)
+        net_driver._ensure_gpe_network.assert_called_with(physnet=physnet,
+                                                          segmentation_id=1000,
+                                                          intf="tap1",
+                                                          ifidx=10)
+
+    def test_yes_network_on_host(self):
         physnet = 'test'
-        self.vpp.networks = {(physnet, 'flat', 0): 'test'}
-        retval = self.vpp.ensure_network_on_host(physnet, 'flat', 0)
-        self.assertEqual(retval, 'test')
-        m_ensure_network_in_vpp.assert_not_called()
+        self.vpp.get_if_for_physnet = mock.MagicMock(return_value=("tap1", 10))
+        net_data = {
+            'physnet': physnet,
+            'if_physnet': "tap1",
+            'bridge_domain_id': 10,
+            'network_type': 'flat',
+            'segmentation_id': 0,
+            'if_uplink_idx': 10
+        }
+        self.vpp.net_driver.networks = {(physnet, 'flat', 0): net_data}
+        self.vpp.net_driver._ensure_flat_network = mock.MagicMock()
+        retval = self.vpp.net_driver.ensure_network(physnet, 'flat', 0)
+        self.assertEqual(retval, net_data)
+        self.vpp.net_driver._ensure_flat_network.assert_not_called()
 
     def test_none_ensure_network_on_host(self):
-        retval = self.vpp.ensure_network_on_host('not_there', 'flat', None)
+        retval = self.vpp.net_driver.ensure_network('not_there', 'flat', None)
         self.assertIsNone(retval)
 
     def test_flat_ensure_network_on_host(self):
-        net_length = len(self.vpp.networks)
-        self.vpp.ensure_network_on_host('test_net', 'flat', '0')
+        net_length = len(self.vpp.net_driver.networks)
+        self.vpp.net_driver.ensure_network('test_net', 'flat', '0')
         self.vpp.vpp.ifup.assert_called_once_with(720)
         # Flat networks should tag with just the physnet mark
         self.vpp.vpp.set_interface_tag.assert_called_once_with(
             720, 'net-vpp.physnet:test_net')
         self.vpp.vpp.create_bridge_domain.assert_called_once_with(720, 180)
         self.vpp.vpp.add_to_bridge.assert_called_once_with(720, 720)
-        self.assertEqual(len(self.vpp.networks), 1 + net_length)
+        self.assertEqual(len(self.vpp.net_driver.networks), 1 + net_length)
 
     def test_vlan_ensure_network_on_host(self):
-        net_length = len(self.vpp.networks)
-        self.vpp.ensure_network_on_host('test_net', 'vlan', '1')
+        net_length = len(self.vpp.net_driver.networks)
+        self.vpp.net_driver.ensure_network('test_net', 'vlan', '1')
         self.vpp.vpp.ifup.assert_called_with(740)
         # This will tag the physnet interface and the network uplink.
         self.assertEqual(
@@ -153,27 +178,29 @@ class VPPForwarderTestCase(base.BaseTestCase):
             sorted(self.vpp.vpp.set_interface_tag.mock_calls))
         self.vpp.vpp.create_bridge_domain.assert_called_once_with(740, 180)
         self.vpp.vpp.add_to_bridge.assert_called_once_with(740, 740)
-        self.assertEqual(len(self.vpp.networks), 1 + net_length)
+        self.assertEqual(len(self.vpp.net_driver.networks), 1 + net_length)
 
     def test_delete_network_on_host(self):
         physnet = 'test'
-        self.vpp.networks = {(physnet, 'flat', None): {'bridge_domain_id': 1,
-                                                       'if_physnet': 'physint',
-                                                       'network_type': 'flat'}}
+        self.vpp.net_driver.networks = {(physnet, 'flat', 0): {
+            'bridge_domain_id': 1,
+            'if_physnet': 'physint',
+            'network_type': 'flat'}}
         self.vpp.vpp.get_bridge_domains.return_value = {1: []}
 
-        self.vpp.delete_network_on_host(physnet, 'flat')
+        self.vpp.net_driver.delete_network(physnet, 'flat', 0)
 
         self.vpp.vpp.delete_bridge_domain.assert_called_once_with(1)
 
     def test_delete_network_on_host_nobridge(self):
         physnet = 'test'
-        self.vpp.networks = {(physnet, 'flat', None): {'bridge_domain_id': 1,
-                                                       'if_physnet': 'physint',
-                                                       'network_type': 'flat'}}
+        self.vpp.net_driver.networks = {(physnet, 'flat', 0): {
+            'bridge_domain_id': 1,
+            'if_physnet': 'physint',
+            'network_type': 'flat'}}
         self.vpp.vpp.get_bridge_domains.return_value = {}
 
-        self.vpp.delete_network_on_host(physnet, 'flat')
+        self.vpp.net_driver.delete_network(physnet, 'flat', 0)
 
         assert not self.vpp.vpp.delete_bridge_domain.called, \
             'delete_bridge_domain should not have been called'
@@ -267,7 +294,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                           if_type, uuid, mac)
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_interface_on_host')
     def test_bind_interface_on_host(self, m_create_iface_on_host,
@@ -369,7 +397,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                 'state': False}
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def _test_create_router_interface_on_host(self, m_network_on_host,
                                               port, router):
         # Test adding an interface to the router to create it in VPP.
@@ -388,7 +417,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                 loopback_idx, router['gateway_ip'], router['prefixlen'])
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def _test_create_router_interface_with_existing_bvi_and_ip(
         self, m_network_on_host, port, router):
         # Test repeat adding the same router interface.
@@ -410,7 +440,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     self.vpp.vpp.set_interface_ip.assert_not_called()
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def _test_create_router_interface_with_existing_bvi_different_ip(
         self, m_network_on_host, port, router, other_router):
         # Test adding a different router interface.
@@ -430,7 +461,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         5, router['gateway_ip'], router['prefixlen'])
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.' +
         'export_routes_from_tenant_vrfs')
@@ -459,7 +491,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.assertIsNone(self.vpp.router_interfaces.get(port))
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def _test_delete_router_interface_with_multiple_interfaces(
         self, m_network_on_host, port, is_ipv6):
         # Test deleting a router interface with interfaces from other subnets
@@ -487,7 +520,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
             5, gateway_ip, prefixlen)
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def test_create_router_external_gateway_on_host(self, m_network_on_host):
         router = self._get_mock_external_router()
         m_network_on_host.return_value = {'bridge_domain_id': 'fake_dom_id'}
@@ -505,7 +539,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     5, router['gateways'][0][0], router['gateways'][0][1])
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def test_create_router_external_gateway_with_snat_interface_set(
             self, m_network_on_host):
         router = self._get_mock_external_router()
@@ -521,7 +556,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     5, router['gateways'][0][0], router['gateways'][0][1])
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def test_create_router_external_gateway_with_snat_int_and_ip_set(
             self, m_network_on_host):
         router = self._get_mock_external_router()
@@ -542,7 +578,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         5, interface_ip, prefixlen)
 
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver.' +
+        'ensure_network')
     def test_create_router_external_gateway_snat_int_ip_and_ext_gw_set(
             self, m_network_on_host):
         router = self._get_mock_external_router()
@@ -793,7 +830,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.gpe.gpe_src_cidr = "10.1.1.1/24"
         self.vpp.vpp.get_bridge_domains.return_value = []
         self.vpp.vpp.get_lisp_vni_to_bd_mappings.return_value = []
-        ret_val = self.vpp.ensure_network_on_host(physnet, net_type, seg_id)
+        ret_val = self.vpp.net_driver.ensure_network(physnet, net_type, seg_id)
         self.vpp.vpp.create_bridge_domain.assert_called_once_with(
             70000, 300)
         self.vpp.vpp.add_lisp_vni_to_bd_mapping.assert_called_once_with(
@@ -804,9 +841,10 @@ class VPPForwarderTestCase(base.BaseTestCase):
             prefixlen=24)
         self.vpp.vpp.set_interface_tag.assert_called_with(
             720, 'net-vpp.physnet:uplink')
-        network_data = self.vpp.networks[('uplink', 'gpe', 5000)]
+        network_data = self.vpp.net_driver.get_network('uplink', 'gpe', 5000)
         expected_val = {'bridge_domain_id': 70000,
                         'if_physnet': "test_iface",
+                        'if_uplink_idx': None,
                         'network_type': 'gpe',
                         'segmentation_id': 5000,
                         'physnet': 'uplink'}
@@ -815,7 +853,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
 
     def test_delete_gpe_network_on_host(self):
         self.vpp.gpe = gpe.GPEForwarder(self.vpp)
-        self.vpp.networks = {}
+        self.vpp.net_driver.networks = {}
         gpe_lset_name = constants.GPE_LSET_NAME
         self.vpp.physnets = {"uplink": "test_iface"}
         physnet, net_type, seg_id = 'uplink', 'gpe', 5000
@@ -834,8 +872,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                                                                   70000)]
         self.vpp.gpe.gpe_map[gpe_lset_name] = mock_gpe_local_map_data
         self.vpp.gpe.gpe_map['remote_map'] = mock_gpe_remote_map_data
-        self.vpp.networks[(physnet, net_type, seg_id)] = mock_data
-        self.vpp.delete_network_on_host(physnet, net_type, seg_id)
+        self.vpp.net_driver.networks[(physnet, net_type, seg_id)] = mock_data
+        self.vpp.net_driver.delete_network(physnet, net_type, seg_id)
         self.vpp.vpp.del_lisp_vni_to_bd_mapping.assert_called_once_with(
             vni=5000, bridge_domain=70000)
         self.assertEqual(self.vpp.gpe.gpe_map[gpe_lset_name]['vnis'], set([]))
@@ -845,7 +883,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             '2:2:2:2:2:2', 5000)
         self.assertEqual(self.vpp.gpe.gpe_map['remote_map'], {
             ('3:3:3:3:3:3', 5001): '3.3.3.3'})
-        self.assertEqual(self.vpp.networks, {})
+        self.assertEqual(self.vpp.net_driver.networks, {})
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.' +
@@ -853,15 +891,16 @@ class VPPForwarderTestCase(base.BaseTestCase):
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.ensure_interface_on_host')
     @mock.patch(
-        'networking_vpp.agent.server.VPPForwarder.ensure_network_on_host')
+        'networking_vpp.agent.network_interface.NetworkInterfaceDriver')
     def test_bind_gpe_interface_on_host(self,
-                                        mock_ensure_net_on_host,
+                                        mock_net_driver,
                                         mock_ensure_int_on_host,
                                         mock_ensure_int_in_bridge):
         gpe_lset_name = constants.GPE_LSET_NAME
         self.vpp.physnets = {"uplink": "test_iface"}
         self.vpp.gpe = gpe.GPEForwarder(self.vpp)
         self.vpp.gpe.gpe_locators = "uplink"
+        self.vpp.net_driver = mock_net_driver
 
         mock_net_data = {'bridge_domain_id': 70000,
                          'if_physnet': "test_iface",
@@ -877,7 +916,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         'sw_if_idxs': set([]),
                         'local_map': {}}
         self.vpp.gpe.gpe_map[gpe_lset_name] = mock_gpe_map
-        mock_ensure_net_on_host.return_value = mock_net_data
+        mock_net_driver.ensure_network.return_value = mock_net_data
         mock_ensure_int_on_host.return_value = mock_props
         self.vpp.bind_interface_on_host('vhostuser', 'fake-uuid',
                                         mock_props['mac'], 'uplink', 'gpe',
@@ -917,7 +956,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.get_lisp_vni_to_bd_mappings.return_value = [(5000,
                                                                   70000)]
         self.vpp.interfaces[port_uuid] = mock_props
-        self.vpp.networks[('uplink', 'gpe', 5000)] = mock_net_data
+        self.vpp.net_driver.networks[('uplink', 'gpe', 5000)] = mock_net_data
         self.vpp.gpe.gpe_map[gpe_lset_name] = mock_gpe_map
         self.vpp.gpe.gpe_map['remote_map'] = {}
         self.vpp.port_ips[port_uuid] = '1.1.1.1'
@@ -939,7 +978,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             vni=mock_net_data['segmentation_id'],
             bridge_domain=mock_net_data['bridge_domain_id'])
         self.assertEqual(self.vpp.gpe.gpe_map[gpe_lset_name]['vnis'], set([]))
-        self.assertEqual(self.vpp.networks, {})
+        self.assertEqual(self.vpp.net_driver.networks, {})
 
     @mock.patch('networking_vpp.agent.gpe.GpeListener')
     @mock.patch('networking_vpp.agent.server.EtcdListener')
