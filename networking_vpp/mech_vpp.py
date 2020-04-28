@@ -44,35 +44,9 @@ from networking_vpp.compat import events
 from networking_vpp.compat import registry
 from networking_vpp.compat import resources
 
+from neutron.db.models import securitygroup
+from neutron.db import provisioning_blocks
 
-try:
-    # Newton and on
-    from neutron.db.models import securitygroup
-except ImportError:
-    from neutron.db import securitygroups_db as securitygroup
-
-try:
-    # Newton (?) and on - prior to this we set state up, after this we
-    # block ML2 from setting state to up
-    from neutron.db import provisioning_blocks
-except ImportError:
-    global provisioning_blocks
-    provisioning_blocks = None
-
-# Liberty doesn't support precommit events.  We fix that here.
-# 'commit time' is defined (by us alone) as 'when you should
-# be using a callback to commit things'
-try:
-    CREATE_COMMIT_TIME = events.PRECOMMIT_CREATE
-    UPDATE_COMMIT_TIME = events.PRECOMMIT_UPDATE
-    DELETE_COMMIT_TIME = events.PRECOMMIT_DELETE
-    PRECOMMIT = True
-except AttributeError:
-    # Liberty fallbacks:
-    CREATE_COMMIT_TIME = events.AFTER_CREATE
-    UPDATE_COMMIT_TIME = events.AFTER_UPDATE
-    DELETE_COMMIT_TIME = events.AFTER_DELETE
-    PRECOMMIT = False
 
 LOG = logging.getLogger(__name__)
 
@@ -333,9 +307,6 @@ class VPPMechanismDriver(api.MechanismDriver):
         self._release_provisioning_block(host, port_id)
 
     def _insert_provisioning_block(self, context):
-        if provisioning_blocks is None:
-            # Functionality not available in this version of Neutron
-            return
 
         # we insert a status barrier to prevent the port from transitioning
         # to active until the agent reports back that the wiring is done
@@ -351,16 +322,9 @@ class VPPMechanismDriver(api.MechanismDriver):
     def _release_provisioning_block(self, host, port_id):
         context = n_context.get_admin_context()
 
-        if provisioning_blocks is None:
-            # Without provisioning_blocks support, it's our job (not
-            # ML2's) to make the port active.
-            plugin = directory.get_plugin()
-            plugin.update_port_status(context, port_id,
-                                      n_const.PORT_STATUS_ACTIVE, host)
-        else:
-            provisioning_blocks.provisioning_complete(
-                context, port_id, resources.PORT,
-                provisioning_blocks.L2_AGENT_ENTITY)
+        provisioning_blocks.provisioning_complete(
+            context, port_id, resources.PORT,
+            provisioning_blocks.L2_AGENT_ENTITY)
 
     def update_port_postcommit(self, port_context):
         """Work to do, post-DB commit, when updating a port
@@ -601,9 +565,6 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
         # this state by Nova.
         self.notify_bound = notify_bound
 
-        # For Liberty support, we have to have a memory between notifications
-        self.deleted_rule_secgroup_id = {}
-
         # We need certain directories to exist
         self.state_key_space = LEADIN + '/state'
         self.port_key_space = LEADIN + '/nodes'
@@ -632,14 +593,9 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
         etcd_helper = None
         etcd_client = None
 
-        try:
-            # Liberty, Mitaka
-            ev = events.AFTER_INIT
-        except Exception:
-            # Newton and on
-            ev = events.AFTER_CREATE
-
-        registry.subscribe(self.start_threads, resources.PROCESS, ev)
+        registry.subscribe(self.start_threads,
+                           resources.PROCESS,
+                           events.AFTER_INIT)
 
     def start_threads(self, resource, event, trigger):
         LOG.debug('Starting background threads for Neutron worker')
@@ -679,22 +635,21 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
         # groups themselves have no forwarder state in them, so we
         # don't need the update events
 
-        # register pre-commit events if they're available
-        if PRECOMMIT:
-            # security group precommit events
-            registry.subscribe(self.process_secgroup_commit,
-                               resources.SECURITY_GROUP,
-                               events.PRECOMMIT_CREATE)
-            registry.subscribe(self.process_secgroup_commit,
-                               resources.SECURITY_GROUP,
-                               events.PRECOMMIT_DELETE)
-            # security group rule precommit events
-            registry.subscribe(self.process_secgroup_commit,
-                               resources.SECURITY_GROUP_RULE,
-                               events.PRECOMMIT_CREATE)
-            registry.subscribe(self.process_secgroup_commit,
-                               resources.SECURITY_GROUP_RULE,
-                               events.PRECOMMIT_DELETE)
+        # register pre-commit events
+        # security group precommit events
+        registry.subscribe(self.process_secgroup_commit,
+                           resources.SECURITY_GROUP,
+                           events.PRECOMMIT_CREATE)
+        registry.subscribe(self.process_secgroup_commit,
+                           resources.SECURITY_GROUP,
+                           events.PRECOMMIT_DELETE)
+        # security group rule precommit events
+        registry.subscribe(self.process_secgroup_commit,
+                           resources.SECURITY_GROUP_RULE,
+                           events.PRECOMMIT_CREATE)
+        registry.subscribe(self.process_secgroup_commit,
+                           resources.SECURITY_GROUP_RULE,
+                           events.PRECOMMIT_DELETE)
 
         # register post-commit events
         # security group post commit events
@@ -712,30 +667,12 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
                            resources.SECURITY_GROUP_RULE,
                            events.AFTER_DELETE)
 
-        if not PRECOMMIT:
-            # Liberty requires a BEFORE_DELETE hack
-            registry.subscribe(self.process_secgroup_commit,
-                               resources.SECURITY_GROUP_RULE,
-                               events.BEFORE_DELETE)
-
     def process_secgroup_after(self, resource, event, trigger, **kwargs):
         """Callback for handling security group/rule commit-complete events
 
         This is when we should tell other things that a change has
         happened and has been recorded permanently in the DB.
         """
-        # In Liberty, this is the only callback that's called.
-        # We use our own event names, which will identify AFTER_*
-        # events as the right time to commit, so in this case we
-        # simply call the commit function ourselves.
-
-        # This is not perfect - since we're not committing in one
-        # transaction we can commit the secgroup change but fail to
-        # propagate it to the journal and from there  to etcd on a
-        # crash.  It's all we can do for Liberty as it doesn't support
-        # in-transaction precommit events.
-        if not PRECOMMIT:
-            self.process_secgroup_commit(resource, event, trigger, **kwargs)
 
         # Whatever the object that caused this, we've put something
         # in the journal and now need to nudge the communicator
@@ -765,10 +702,10 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
         deleted_rules = []
 
         if resource == resources.SECURITY_GROUP:
-            if event == DELETE_COMMIT_TIME:
+            if event == events.PRECOMMIT_DELETE:
                 self.delete_secgroup_from_etcd(context.session,
                                                kwargs['security_group_id'])
-            elif event == CREATE_COMMIT_TIME:
+            elif event == events.PRECOMMIT_CREATE:
                 # When Neutron creates a security group it also
                 # attaches rules to it.  We need to sync the rules.
 
@@ -789,36 +726,13 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
             # rules.  So in this case we track down the affected
             # rule and update its entire data.
             # NB: rules are never updated.
-            if event == events.BEFORE_DELETE:
-                # This is a nasty little hack to add required information
-                # so that the AFTER_DELETE trigger can have it
-                # Fortunately the events described are all called from the
-                # one DB function and we will see all of them in the one
-                # process.  We use a dict in case multiple threads are
-                # working.  Only one of them will get to the AFTER if they're
-                # working on the one rule.
-                # This is ugly.  Liberty support is ugly.
+
+            if event == events.PRECOMMIT_DELETE:
                 rule = self.get_secgroup_rule(res_id, context)
-                self.deleted_rule_secgroup_id[res_id] = \
-                    rule['security_group_id']
-
-            if event == DELETE_COMMIT_TIME:
-
-                if PRECOMMIT:
-                    # This works for PRECOMMIT triggers, where the rule
-                    # is in the DB still
-                    rule = self.get_secgroup_rule(res_id, context)
-                    changed_sgids = [rule['security_group_id']]
-                else:
-                    # This works for AFTER_DELETE triggers (Liberty)
-                    # but only because we saved it in BEFORE_DELETE
-                    changed_sgids = [self.deleted_rule_secgroup_id[res_id]]
-                    # Clean up to keep the dict size down
-                    del self.deleted_rule_secgroup_id[res_id]
-
+                changed_sgids = [rule['security_group_id']]
                 deleted_rules.append(res_id)
 
-            elif event == CREATE_COMMIT_TIME:
+            elif event == events.PRECOMMIT_CREATE:
                 # Groups don't have the same UUID problem - we're not
                 # using their UUID, we're using their SG's, which must
                 # be present.
