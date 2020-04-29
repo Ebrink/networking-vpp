@@ -44,7 +44,6 @@ from networking_vpp.compat import events
 from networking_vpp.compat import registry
 from networking_vpp.compat import resources
 
-from neutron.db.models import securitygroup
 from neutron.db import provisioning_blocks
 
 
@@ -686,40 +685,32 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
         """
         LOG.debug("Received event %s notification for resource"
                   " %s with kwargs %s", event, resource, kwargs)
+
         context = kwargs['context']
 
-        # Whatever we're working from should have a resource ID
-        # in this form, if it exists at all.  Alternatively, it may
-        # be that there's no ID (because the row is freshly created).
-        res = kwargs.get(resource)
-        res_id = kwargs.get("%s_id" % resource)
-        if res_id is None:
-            res_id = res.get('id')
-
-        new_objects = context.session.new
-
-        changed_sgids = []
-        deleted_rules = []
+        sgid = None
+        deleted_rule_id = None
+        added_rule = {}
 
         if resource == resources.SECURITY_GROUP:
             if event == events.PRECOMMIT_DELETE:
                 self.delete_secgroup_from_etcd(context.session,
                                                kwargs['security_group_id'])
+                # Job done.
+                return
+
+                # All other event types drop out to the update-the-key
+                # code at the bottom of the function.
+
             elif event == events.PRECOMMIT_CREATE:
-                # When Neutron creates a security group it also
-                # attaches rules to it.  We need to sync the rules.
+                # Also, the SG passed to us is what comes in from the user.  We
+                # require what went into the DB (where we added a UUID to it),
+                # so we have to get that from the record of changed and as yet
+                # uncommitted objects.
+                sgid = kwargs[resource]['id']
 
-                # Also, the SG passed to us is what comes in from the user.
-                # We require what went into the DB (where we added a UUID
-                # to it).
-
-                if res_id is None:
-                    # New objects do not have their resource ID assigned
-                    changed_sgids = \
-                        [sg.id for sg in new_objects
-                            if isinstance(sg, securitygroup.SecurityGroup)]
-                else:
-                    changed_sgids = [res_id]
+            # The default rules are supplied directly in the context
+            rules = kwargs[resource]['security_group_rules']
 
         elif resource == resources.SECURITY_GROUP_RULE:
             # We store security groups with a composite of all their
@@ -728,60 +719,52 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
             # NB: rules are never updated.
 
             if event == events.PRECOMMIT_DELETE:
-                rule = self.get_secgroup_rule(res_id, context)
-                changed_sgids = [rule['security_group_id']]
-                deleted_rules.append(res_id)
+                deleted_rule_id = kwargs['security_group_rule_id']
+                sgid = kwargs['security_group_id']
 
             elif event == events.PRECOMMIT_CREATE:
                 # Groups don't have the same UUID problem - we're not
                 # using their UUID, we're using their SG's, which must
                 # be present.
-                rule = kwargs['security_group_rule']
-                changed_sgids = [rule['security_group_id']]
+                added_rule = kwargs['security_group_rule']
+                sgid = added_rule['security_group_id']
 
-        if changed_sgids:
-            self.send_sg_updates(context,
-                                 changed_sgids,
-                                 deleted_rules=deleted_rules)
+            # Start by getting the rules the DB knows about
+            rules = self.get_rules_for_secgroup(sgid, context)
 
-    def send_sg_updates(self, context, sgids, deleted_rules=None):
-        """Called when security group rules are updated
+        # Adding a group or changing rules results in the same behaviour:
+        # rewrite the key in etcd.
 
-        Arguments:
-        sgs - A list of one or more security group IDs
-        context - The plugin context i.e. neutron.context.Context object
-        deleted_rules - An optional list of deleted rules
+        # If we're in the precommit part, we may have deleted rules in this
+        # list and we should exclude them.  We also, cautiously, exclude any
+        # added rule as well, though it should not have made it into the DB.
+        # If either is unset it's None, and != None is not a test that will
+        # pass.
+        rules = [r for r in rules
+                 if r['id'] != deleted_rule_id
+                 and r['id'] != added_rule.get('id')]
 
-        1. Read security group rules from neutron DB
-        2. Build security group objects from their rules
-        3. Write secgroup to the secgroup_key_space in etcd
-        """
+        if added_rule:
+            rules.append(added_rule)
 
-        if deleted_rules is None:
-            deleted_rules = []
+        # Get the full details of the secgroup in etcd-exchange format
+        secgroup = self.get_secgroup_from_rules(sgid, rules)
 
+        # Write security group data to etcd
+        self.send_secgroup_to_agents(context.session, secgroup)
+
+    def get_rules_for_secgroup(self, sgid, context):
         plugin = directory.get_plugin()
-        with context.session.begin(subtransactions=True):
-            for sgid in sgids:
-                rules = plugin.get_security_group_rules(
-                    context, filters={'security_group_id': [sgid]}
-                    )
+        rules = plugin.get_security_group_rules(
+            context, filters={'security_group_id': [sgid]}
+        )
 
-                # If we're in the precommit part, we may have deleted
-                # rules in this list and we should exclude them
-                rules = (r for r in rules if r['id'] not in deleted_rules)
-
-                # Get the full details of the secgroup in exchange format
-                secgroup = self.get_secgroup_from_rules(sgid, rules)
-
-                # Write security group data to etcd
-                self.send_secgroup_to_agents(context.session, secgroup)
+        return rules
 
     def get_secgroup_rule(self, rule_id, context):
         """Fetch and return a security group rule from Neutron DB"""
         plugin = directory.get_plugin()
-        with context.session.begin(subtransactions=True):
-            return plugin.get_security_group_rule(context, rule_id)
+        return plugin.get_security_group_rule(context, rule_id)
 
     def get_secgroup_from_rules(self, sgid, rules):
         """Build and return a security group namedtuple object.
