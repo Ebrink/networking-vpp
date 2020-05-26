@@ -798,9 +798,10 @@ class VPPForwarderTestCase(base.BaseTestCase):
             70000, 300)
         self.vpp.vpp.add_lisp_vni_to_bd_mapping.assert_called_once_with(
             vni=5000, bridge_domain=70000)
-        self.vpp.vpp.set_interface_address.assert_called_once_with(
-            sw_if_index=720, is_ipv6=0,
-            address_length=24, address=self.vpp._pack_address("10.1.1.1"))
+        self.vpp.vpp.set_interface_ip.assert_called_once_with(
+            if_idx=720,
+            ip="10.1.1.1",
+            prefixlen=24)
         self.vpp.vpp.set_interface_tag.assert_called_with(
             720, 'net-vpp.physnet:uplink')
         network_data = self.vpp.networks[('uplink', 'gpe', 5000)]
