@@ -298,10 +298,6 @@ class VPPInterface(object):
         else:
             return False
 
-    def disconnect(self):
-        # type: () -> None
-        self.call_vpp('disconnect')
-
     # Note(onong): Here's the complete NAT related enums for reference and for
     # future. We just need few for now.
     # enum nat_config_flags : u8
