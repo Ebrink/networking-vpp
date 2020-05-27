@@ -276,14 +276,9 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
         self.vppf.ensure_gpe_link()
         src_adr = self.vppf.gpe_underlay_addr
-        if ip_network(six.text_type(src_adr)).version == 6:
-            is_ipv6 = 1
-        else:
-            is_ipv6 = 0
         idx = self.vppf.vpp.create_vxlan_tunnel(
             self.vppf._pack_address(src_adr),
             self.vppf._pack_address(dst_adr),
-            is_ipv6,
             vni)
         return idx
 
@@ -291,14 +286,9 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         """Remove a VXLAN tunnel from VPP."""
         self.vppf.ensure_gpe_link()
         src_adr = self.vppf.gpe_underlay_addr
-        if ip_network(six.text_type(src_adr)).version == 6:
-            is_ipv6 = 1
-        else:
-            is_ipv6 = 0
         self.vppf.vpp.delete_vxlan_tunnel(
             self.vppf._pack_address(src_adr),
             self.vppf._pack_address(dst_adr),
-            is_ipv6,
             vni)
 
     def _create_erspan_tunnel(self, src_adr, dst_adr, session_id):

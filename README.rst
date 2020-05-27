@@ -456,7 +456,7 @@ underlay network to transport Layer2 and Layer3 packets (a.k.a overlay) sent
 by tenant instances.
 
 At this point, we only support Layer2 overlays between bridge domains using
-the included "gpe" type driver.
+the included ``gpe`` type driver.
 
 Following are some key concepts that will help you set it up and get going.
 
@@ -467,10 +467,10 @@ much easier. We will walk you through all of it.
 If you are just interested in setting it up, you only need to understand
 the concept of a locator. VPP uses this name to identify the uplink interface
 on each compute node as the GPE underlay. If you are using devstack, just
-set the value of the variable "GPE_LOCATORS" to the name of the physnet
+set the value of the variable ``GPE_LOCATORS`` to the name of the physnet
 that you want to use as the underlay interface on that compute node.
 
-Besides this, set the devstack variable "GPE_SRC_CIDR" to a CIDR value for
+Besides this, set the devstack variable ``GPE_SRC_CIDR`` to a CIDR value for
 the underlay interface. The agent will program the underlay interface in VPP
 with the IP/mask value you set for this variable.
 
@@ -479,10 +479,10 @@ node.
 
 These are the only two new settings you need to know to get GPE working.
 
-Also ensure, that you have enabled vxlan as one of the tenant_network_type
-settings and allocated some vni's in the vni_ranges. It is a good practice
-to keep your VLAN and VXLAN ranges in separate namespaces to avoid any
-conflicts.
+Also ensure, that you have added ``gpe`` to ``tenant_network_types`` and
+``type_drivers`` settings and allocated some vni's in the ``vni_ranges`` in
+``neutron.conf``. It is a good practice to keep your VLAN and VXLAN ranges in
+separate namespaces to avoid any conflicts.
 
 We do assume that you have setup IP routing for the locators within your
 network to enable all the underlay interfaces to reach one-another via either
@@ -496,27 +496,28 @@ These are some GPE internals to know if you are interested in contributing
 or doing code reviews. You do not need to know about these if you are
 just primarily interested in deploying GPE.
 
-Within VPP, GPE uses some terms that you need to be aware of.
-1. GPE uses the name EID to denote a mac-address or an IP address. Since we
-support Layer2 overlays at this point, EID refers to a mac-address
-in our use-case.
-2. GPE creates and maintains a mapping between each VNI and its
-corresponding bridge-domain.
-3. GPE maintains mappings for both local and remote mac addresses
-belonging to all the VNIs for which a port is bound on the compute node.
-4. To deliver an L2 overlay packet, GPE tracks the IP address of the remote
-locator that binds the Neutron port.The remote mac addresses are pushed into
-VPP by the vpp-agent each time a port is bound on a remote node only if that
-binding is interesting to it. So the way this works is that the agents
-communicate their bound mac-addresses, their VNI and the underlay IP address
-using etcd watch events. A directory is setup within etcd for this at
-/networking-vpp/global/networks/gpe. An eventlet thread on the vpp-agent
-watches this directory and adds or removes the mappings within VPP
-iff it binds a port on that VNI. All other notifications, including its own
-watch events are uninteresting and ignored.
-5. GPE uses a "locator_set" to group and manage the locators, although in
-the current implementation, we only support one locator within
-a pre-configured locator_set.
+Within VPP, GPE uses some terms that you need to be aware of:
+
+-   GPE uses the name EID to denote a mac-address or an IP address. Since we
+    support Layer2 overlays at this point, EID refers to a mac-address
+    in our use-case.
+-   GPE creates and maintains a mapping between each VNI and its
+    corresponding bridge-domain.
+-   GPE maintains mappings for both local and remote mac addresses
+    belonging to all the VNIs for which a port is bound on the compute node.
+-   To deliver an L2 overlay packet, GPE tracks the IP address of the remote
+    locator that binds the Neutron port.The remote mac addresses are pushed into
+    VPP by the vpp-agent each time a port is bound on a remote node only if that
+    binding is interesting to it. So the way this works is that the agents
+    communicate their bound mac-addresses, their VNI and the underlay IP address
+    using etcd watch events. A directory is setup within etcd for this at
+    /networking-vpp/global/networks/gpe. An eventlet thread on the vpp-agent
+    watches this directory and adds or removes the mappings within VPP
+    iff it binds a port on that VNI. All other notifications, including its own
+    watch events are uninteresting and ignored.
+-   GPE uses a "locator_set" to group and manage the locators, although in
+    the current implementation, we only support one locator within
+    a pre-configured locator_set.
 
 Any known issues?
 ~~~~~~~~~~~~~~~~~

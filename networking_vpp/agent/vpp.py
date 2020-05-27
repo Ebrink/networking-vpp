@@ -213,6 +213,7 @@ class VPPInterface(object):
             sys.exit(1)
 
     def call_vpp(self, func, *args, **kwargs):
+        """Wrapper which invokes the VPP APIs through PAPI """
         # Disabling to prevent message debug flooding
         # self.LOG.debug('VPP: %s(%s, %s): ',
         # func, ', '.join(args), str(kwargs))
@@ -576,14 +577,14 @@ class VPPInterface(object):
         """
         self.call_vpp('bridge_flags',
                       bd_id=bridge_domain_id,
-                      is_set=0,
+                      is_set=False,
                       flags=(vpp_const.L2_LEARN | vpp_const.L2_FWD |
                              vpp_const.L2_FLOOD |
                              vpp_const.L2_UU_FLOOD |
                              vpp_const.L2_ARP_TERM))
         self.call_vpp('bridge_flags',
                       bd_id=bridge_domain_id,
-                      is_set=1, flags=flags)
+                      is_set=True, flags=flags)
 
     def bridge_enable_flooding(self, bridge_domain_id):
         # type: (int) -> None
@@ -703,7 +704,7 @@ class VPPInterface(object):
         # type: (int, str, List[dict]) -> int
         t = self.call_vpp('acl_add_replace',
                           acl_index=acl_index,
-                          tag=binary_type(tag),
+                          tag=tag,
                           r=rules,
                           count=len(rules))
         return t.acl_index
@@ -738,7 +739,7 @@ class VPPInterface(object):
         t = self.call_vpp('acl_dump', acl_index=0xffffffff)
         for acl in t:
             if hasattr(acl, 'acl_index'):
-                yield (acl.acl_index, fix_string(acl.tag))
+                yield (acl.acl_index, acl.tag)
 
     ########################################
 
@@ -750,13 +751,13 @@ class VPPInterface(object):
 
     def set_macip_acl_on_interface(self, sw_if_index, acl_index):
         self.call_vpp('macip_acl_interface_add_del',
-                      is_add=1,
+                      is_add=True,
                       sw_if_index=sw_if_index,
                       acl_index=acl_index)
 
     def delete_macip_acl_on_interface(self, sw_if_index, acl_index):
         self.call_vpp('macip_acl_interface_add_del',
-                      is_add=0,  # delete
+                      is_add=False,  # delete
                       sw_if_index=sw_if_index,
                       acl_index=acl_index)
 
@@ -1194,6 +1195,7 @@ class VPPInterface(object):
         # IPv4Interface/IPv6Interface type in Python.
         #
         # NB: Use VPP 19.08.1 and above only
+
         ext_intf_ip = ipaddress.ip_interface(six.text_type(ext_intf_ip))
         # VPP 19.08.1 onwards ip_fib_dump/ip6_fib_dump are replaced by
         # ip_route_dump
@@ -1395,51 +1397,55 @@ class VPPInterface(object):
     ########################################
 
     def lisp_enable(self):
-        self.call_vpp('lisp_enable_disable', is_en=1)
+        self.call_vpp('lisp_enable_disable', is_enable=True)
 
     def is_lisp_enabled(self):
         t = self.call_vpp('show_lisp_status')
-        return t.gpe_status
+        return t.is_gpe_enabled
 
     def get_lisp_vni_to_bd_mappings(self):
         """Retrieve LISP mappings between the VNI and Bridge Domain."""
-        t = self.call_vpp('lisp_eid_table_map_dump', is_l2=1)
+        t = self.call_vpp('lisp_eid_table_map_dump', is_l2=True)
         return [(eid_map.vni, eid_map.dp_table) for eid_map in t]
 
     def add_lisp_vni_to_bd_mapping(self, vni, bridge_domain):
         """Add a LISP mapping between a VNI and bridge-domain."""
         self.call_vpp('lisp_eid_table_add_del_map',
-                      is_add=1,
+                      is_add=True,
                       vni=vni,
                       dp_table=bridge_domain,
-                      is_l2=1)
+                      is_l2=True)
 
     def del_lisp_vni_to_bd_mapping(self, vni, bridge_domain):
         """Delete the LISP mapping between a VNI and bridge-domain."""
         self.call_vpp('lisp_eid_table_add_del_map',
-                      is_add=0,
+                      is_add=False,
                       vni=vni,
                       dp_table=bridge_domain,
-                      is_l2=1)
+                      is_l2=True)
 
     def add_lisp_local_mac(self, mac, vni, locator_set_name):
         """Add a local mac address to VNI association in LISP"""
+        # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
+        # namely, vl_api_eid_t
+        eid = {"type": vpp_const.EID_MAC,
+               "address": {"mac": mac_to_bytes(mac)}}
         self.call_vpp('lisp_add_del_local_eid',
-                      is_add=1,
-                      eid_type=2,  # 2: mac_address
-                      eid=mac_to_bytes(mac),
-                      prefix_len=0,
-                      locator_set_name=binary_type(locator_set_name),
+                      is_add=True,
+                      eid=eid,
+                      locator_set_name=locator_set_name,
                       vni=vni)
 
     def del_lisp_local_mac(self, mac, vni, locator_set_name):
         """Delete a local mac address to VNI association in LISP"""
+        # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
+        # namely, vl_api_eid_t
+        eid = {"type": vpp_const.EID_MAC,
+               "address": {"mac": mac_to_bytes(mac)}}
         self.call_vpp('lisp_add_del_local_eid',
-                      is_add=0,
-                      eid_type=2,  # type 2: mac_address
-                      eid=mac_to_bytes(mac),
-                      prefix_len=0,
-                      locator_set_name=binary_type(locator_set_name),
+                      is_add=False,
+                      eid=eid,
+                      locator_set_name=locator_set_name,
                       vni=vni)
 
     def add_lisp_remote_mac(self, mac, vni, underlay):
@@ -1454,14 +1460,17 @@ class VPPInterface(object):
                            "weight": <weight>,
                            "addr": <binary IPv4 or IPv6 address>}])
         """
+        # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
+        # namely, vl_api_eid_t
+        eid = {"type": vpp_const.EID_MAC,
+               "address": {"mac": mac_to_bytes(mac)}}
         self.call_vpp('lisp_add_del_remote_mapping',
-                      is_add=1,
+                      is_add=True,
                       vni=vni,
-                      eid_type=2,  # type 2: mac_address
-                      eid=mac_to_bytes(mac),
+                      eid=eid,
                       rlocs=[underlay],
                       rloc_num=1,
-                      is_src_dst=0)
+                      is_src_dst=False)
 
     def del_lisp_remote_mac(self, mac, vni):
         """Delete a LISP entry for a remote mac address.
@@ -1470,14 +1479,17 @@ class VPPInterface(object):
         mac - remote mac_address
         vni - virtual network identifier
         """
+        # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
+        # namely, vl_api_eid_t
+        eid = {"type": vpp_const.EID_MAC,
+               "address": {"mac": mac_to_bytes(mac)}}
         self.call_vpp('lisp_add_del_remote_mapping',
-                      is_add=0,
+                      is_add=False,
                       vni=vni,
-                      eid_type=2,  # type 2: mac_address
-                      eid=mac_to_bytes(mac),
+                      eid=eid,
                       rlocs=[],
                       rloc_num=0,
-                      is_src_dst=0)
+                      is_src_dst=False)
 
     def add_lisp_locator_set(self, locator_set_name):
         """Adds a LISP locator set.
@@ -1485,8 +1497,8 @@ class VPPInterface(object):
         A LISP locator set is a set of underlay interfaces used by GPE.
         """
         t = self.call_vpp('lisp_add_del_locator_set',
-                          is_add=1,
-                          locator_set_name=binary_type(locator_set_name),
+                          is_add=True,
+                          locator_set_name=locator_set_name,
                           locator_num=0,
                           locators=[])
         return t.ls_index
@@ -1499,8 +1511,8 @@ class VPPInterface(object):
         interface.
         """
         self.call_vpp('lisp_add_del_locator',
-                      is_add=1,
-                      locator_set_name=binary_type(locator_set_name),
+                      is_add=True,
+                      locator_set_name=locator_set_name,
                       sw_if_index=sw_if_index,
                       priority=priority,
                       weight=weight)
@@ -1512,8 +1524,8 @@ class VPPInterface(object):
         interface.
         """
         self.call_vpp('lisp_add_del_locator',
-                      is_add=0,
-                      locator_set_name=binary_type(locator_set_name),
+                      is_add=False,
+                      locator_set_name=locator_set_name,
                       sw_if_index=sw_if_index)
 
     def add_lisp_arp_entry(self, mac, bridge_domain, ipv4_address):
@@ -1521,11 +1533,13 @@ class VPPInterface(object):
 
         ipv4_address is an integer representation of the IPv4 address.
         """
+        # Note(onong): In 20.05, mac and ip4 have been combined to a new type,
+        # namely, vl_api_one_l2_arp_entry_t
+        arp_entry = {"mac": mac_to_bytes(mac), "ip4": ipv4_address}
         self.call_vpp('one_add_del_l2_arp_entry',
-                      is_add=1,
-                      mac=mac_to_bytes(mac),
-                      bd=bridge_domain,
-                      ip4=ipv4_address
+                      is_add=True,
+                      entry=arp_entry,
+                      bd=bridge_domain
                       )
 
     def add_lisp_ndp_entry(self, mac, bridge_domain, ipv6_address):
@@ -1533,11 +1547,13 @@ class VPPInterface(object):
 
         ipv6_address is the packed representation of a IPv6 address.
         """
+        # Note(onong): In 20.05, mac and ip6 have been combined to a new type,
+        # namely, vl_api_one_ndp_entry_t
+        ndp_entry = {"mac": mac_to_bytes(mac), "ip6": ipv6_address}
         self.call_vpp('one_add_del_ndp_entry',
-                      is_add=1,
-                      mac=mac_to_bytes(mac),
-                      bd=bridge_domain,
-                      ip6=ipv6_address
+                      is_add=True,
+                      entry=ndp_entry,
+                      bd=bridge_domain
                       )
 
     def del_lisp_arp_entry(self, mac, bridge_domain, ipv4_address):
@@ -1545,11 +1561,13 @@ class VPPInterface(object):
 
         ipv4_address is an integer representation of the IPv4 address.
         """
+        # Note(onong): In 20.05, mac and ip4 have been combined to a new type,
+        # namely, vl_api_one_l2_arp_entry_t
+        arp_entry = {"mac": mac_to_bytes(mac), "ip4": ipv4_address}
         self.call_vpp('one_add_del_l2_arp_entry',
-                      is_add=0,
-                      mac=mac_to_bytes(mac),
-                      bd=bridge_domain,
-                      ip4=ipv4_address
+                      is_add=False,
+                      entry=arp_entry,
+                      bd=bridge_domain
                       )
 
     def del_lisp_ndp_entry(self, mac, bridge_domain, ipv6_address):
@@ -1557,11 +1575,13 @@ class VPPInterface(object):
 
         ipv6_address is the packed representation of a v6 address.
         """
+        # Note(onong): In 20.05, mac and ip6 have been combined to a new type,
+        # namely, vl_api_one_ndp_entry_t
+        ndp_entry = {"mac": mac_to_bytes(mac), "ip6": ipv6_address}
         self.call_vpp('one_add_del_ndp_entry',
-                      is_add=0,
-                      mac=mac_to_bytes(mac),
-                      bd=bridge_domain,
-                      ip6=ipv6_address
+                      is_add=False,
+                      entry=ndp_entry,
+                      bd=bridge_domain
                       )
 
     def replace_lisp_arp_entry(self, mac, bridge_domain, ipv4_address):
@@ -1574,8 +1594,11 @@ class VPPInterface(object):
                               self.call_vpp('one_l2_arp_entries_get',
                                             bd=bridge_domain).entries
                               if arp.ip4 == ipv4_address]:
+            # Note(onong): In 20.05, mac and ip4 have been combined to a new
+            # type, namely, vl_api_one_l2_arp_entry_t
+            arp_entry = {"mac": mac_to_bytes(mac_addr), "ip4": ip4}
             self.call_vpp('one_add_del_l2_arp_entry',
-                          is_add=0, mac=mac_addr, bd=bridge_domain, ip4=ip4)
+                          is_add=False, entry=arp_entry, bd=bridge_domain)
         # Add the new ARP entry
         self.add_lisp_arp_entry(mac, bridge_domain, ipv4_address)
 
@@ -1589,8 +1612,11 @@ class VPPInterface(object):
                               self.call_vpp('one_ndp_entries_get',
                                             bd=bridge_domain).entries
                               if ndp_entry.ip6 == ipv6_address]:
+            # Note(onong): In 20.05, mac and ip6 have been combined to a new
+            # type, namely, vl_api_one_ndp_entry_t
+            ndp_entry = {"mac": mac_to_bytes(mac_addr), "ip6": ip6}
             self.call_vpp('one_add_del_ndp_entry',
-                          is_add=0, mac=mac_addr, bd=bridge_domain, ip6=ip6)
+                          is_add=0, entry=ndp_entry, bd=bridge_domain)
         # Add the new v6 NDP entry
         self.add_lisp_ndp_entry(mac, bridge_domain, ipv6_address)
 
@@ -1617,16 +1643,22 @@ class VPPInterface(object):
         for mac, ip4 in [(arp.mac, arp.ip4) for arp in
                          self.call_vpp('one_l2_arp_entries_get',
                                        bd=bridge_domain).entries]:
+            # Note(onong): In 20.05, mac and ip4 have been combined to a new
+            # type, namely, vl_api_one_l2_arp_entry_t
+            arp_entry = {"mac": mac_to_bytes(mac), "ip4": ip4}
             self.call_vpp('one_add_del_l2_arp_entry',
-                          is_add=0, mac=mac, bd=bridge_domain, ip4=ip4)
+                          is_add=0, entry=arp_entry, bd=bridge_domain)
 
     def clear_lisp_ndp_entries(self, bridge_domain):
         """Clear LISP NDP entries in the bridge_domain."""
         for mac, ip6 in [(ndp_entry.mac, ndp_entry.ip6) for ndp_entry in
                          self.call_vpp('one_ndp_entries_get',
                                        bd=bridge_domain).entries]:
+            # Note(onong): In 20.05, mac and ip6 have been combined to a new
+            # type, namely, vl_api_one_ndp_entry_t
+            ndp_entry = {"mac": mac_to_bytes(mac), "ip6": ip6}
             self.call_vpp('one_add_del_ndp_entry',
-                          is_add=0, mac=mac, bd=bridge_domain, ip6=ip6)
+                          is_add=0, entry=ndp_entry, bd=bridge_domain)
 
     def get_lisp_local_locators(self, name):
         """Get lisp local locator sets and their corresponding locators.
@@ -1648,17 +1680,17 @@ class VPPInterface(object):
         """
         locators = []
         # filter=1 for local locators
-        t = self.call_vpp('lisp_locator_set_dump', filter=1)
+        t = self.call_vpp('lisp_locator_set_dump',
+                          filter=vpp_const.FILTER_LOCAL)
         for ls in t:
-            ls_set_name = fix_string(ls.ls_name)
+            ls_set_name = ls.ls_name
             if ls_set_name == name:
                 locators.append({'locator_set_name': ls_set_name,
                                  'locator_set_index': ls.ls_index,
                                  'sw_if_idxs': [intf.sw_if_index for
                                                 intf in self.call_vpp(
                                                     'lisp_locator_dump',
-                                                    ls_name=binary_type(
-                                                        str(ls_set_name)))
+                                                    ls_name=ls_set_name)
                                                 ]
                                  }
                                 )
@@ -1682,10 +1714,9 @@ class VPPInterface(object):
         t = self.call_vpp('lisp_eid_table_dump')
         return [{'is_local': val.is_local,
                  'locator_set_index': val.locator_set_index,
-                 'mac': bytes_to_mac(val.eid),
+                 'mac': val.seid.address,
                  'vni': val.vni
-                 }
-                for val in t]
+                 } for val in t]
 
     ########################################
 
@@ -1695,13 +1726,12 @@ class VPPInterface(object):
         self.call_vpp('l2_patch_add_del',
                       rx_sw_if_index=source_idx,
                       tx_sw_if_index=dest_idx,
-                      is_add=1)
+                      is_add=True)
 
     ########################################
 
-    #  direction : 1 = rx, 2 = tx, 3 tx & rx
     def enable_port_mirroring(self, src_idx, dst_idx,
-                              direction=vpp_const.SPAN_RX_TX, is_l2=1):
+                              direction=vpp_const.SPAN_RX_TX, is_l2=True):
         self.LOG.debug("Enable span from %d to %d",
                        src_idx, dst_idx)
         self.call_vpp('sw_interface_span_enable_disable',
@@ -1710,7 +1740,7 @@ class VPPInterface(object):
                       state=direction,
                       is_l2=is_l2)
 
-    def disable_port_mirroring(self, source_idx, dest_idx, is_l2=1):
+    def disable_port_mirroring(self, source_idx, dest_idx, is_l2=True):
         self.LOG.debug("Disable span from %d to %d",
                        source_idx, dest_idx)
         self.call_vpp('sw_interface_span_enable_disable',
@@ -1731,8 +1761,7 @@ class VPPInterface(object):
         # Device instance (ifidx) is selected for us (~0)
         # Decap graph node left to its default (~0)
         t = self.call_vpp('vxlan_add_del_tunnel',
-                          is_add=1,
-                          is_ipv6=is_ipv6,
+                          is_add=True,
                           instance=0xffffffff,
                           src_address=src_addr,
                           dst_address=dst_addr,
@@ -1743,8 +1772,7 @@ class VPPInterface(object):
     def delete_vxlan_tunnel(self, src_addr, dst_addr, is_ipv6, vni):
         self.LOG.debug("Delete vxlan tunnel VNI: %d", vni)
         self.call_vpp('vxlan_add_del_tunnel',
-                      is_add=0,
-                      is_ipv6=is_ipv6,
+                      is_add=False,
                       src_address=src_addr,
                       dst_address=dst_addr,
                       vni=vni)
@@ -1763,28 +1791,34 @@ class VPPInterface(object):
     def create_erspan_tunnel(self, src_addr, dst_addr, is_ipv6, session_id):
         self.LOG.debug("Create ERSPAN tunnel session_id: %d", session_id)
         # Device instance (ifidx) is selected for us (~0)
-        t = self.call_vpp('gre_add_del_tunnel',
-                          is_add=1,
-                          is_ipv6=is_ipv6,
-                          tunnel_type=vpp_const.TUNNEL_TYPE_ERPSAN,
-                          instance=0xffffffff,
-                          src_address=src_addr,
-                          dst_address=dst_addr,
-                          outer_fib_id=0,
-                          session_id=session_id)
+        # Note(onong): 19.08 onwards GRE tunnel attributes are encapsulated
+        # in the new vl_api_gre_tunnel_t type.
+        tun = {"type": vpp_const.TUNNEL_TYPE_ERSPAN,
+               "mode": vpp_const.TUNNEL_ENCAP_DECAP_NONE,
+               "flags": vpp_const.TUNNEL_MODE_P2P,
+               "session_id": session_id,
+               "instance": 0xffffffff,
+               "outer_table_id": 0,
+               "src": src_addr,
+               "dst": dst_addr}
+        t = self.call_vpp('gre_tunnel_add_del',
+                          is_add=True,
+                          tunnel=tun)
         return t.sw_if_index
 
     def delete_erspan_tunnel(self, src_addr, dst_addr, is_ipv6, session_id):
         self.LOG.debug("Delete ERSPAN tunnel session_id: %d", session_id)
-        self.call_vpp('gre_add_del_tunnel',
-                      is_add=0,
-                      is_ipv6=is_ipv6,
-                      tunnel_type=vpp_const.TUNNEL_TYPE_ERPSAN,
-                      instance=0xffffffff,
-                      src_address=src_addr,
-                      dst_address=dst_addr,
-                      outer_fib_id=0,
-                      session_id=session_id)
+        # Note(onong): 19.08 onwards GRE tunnel attributes are encapsulated
+        # in the new vl_api_gre_tunnel_t type.
+        tun = {"type": vpp_const.TUNNEL_TYPE_ERSPAN,
+               "mode": vpp_const.TUNNEL_ENCAP_DECAP_NONE,
+               "flags": vpp_const.TUNNEL_MODE_P2P,
+               "session_id": session_id,
+               "instance": 0xffffffff,
+               "outer_table_id": 0,
+               "src": src_addr,
+               "dst": dst_addr}
+        self.call_vpp('gre_tunnel_add_del', is_add=False, tunnel=tun)
 
     def get_erspan_tunnels(self):
         """Get the list of existing erspan tunnels in this node
@@ -1794,6 +1828,6 @@ class VPPInterface(object):
         t = self.call_vpp('gre_tunnel_dump', sw_if_index=0xffffffff)
         tuns = {}
         for tun in t:
-            if tun.tunnel_type == self.TUNNEL_TYPE_ERSPAN:
+            if tun.tunnel_type == vpp_const.TUNNEL_TYPE_ERSPAN:
                 tuns[(tun.session_id, tun.dst_address,)] = tun.sw_if_index
         return tuns
