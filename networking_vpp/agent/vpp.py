@@ -634,27 +634,15 @@ class VPPInterface(object):
 
         TODO(ijw): NOT ATOMIC
         """
-        if self.ver_ge(18, 10):
-            self.call_vpp('bridge_flags',
-                          bd_id=bridge_domain_id,
-                          is_set=0,
-                          flags=(self.L2_LEARN | self.L2_FWD |
-                                 self.L2_FLOOD |
-                                 self.L2_UU_FLOOD | self.L2_ARP_TERM))
-            self.call_vpp('bridge_flags',
-                          bd_id=bridge_domain_id,
-                          is_set=1, flags=flags)
-        else:
-            self.call_vpp('bridge_flags',
-                          bd_id=bridge_domain_id,
-                          is_set=0,
-                          feature_bitmap=(self.L2_LEARN | self.L2_FWD |
-                                          self.L2_FLOOD |
-                                          self.L2_UU_FLOOD |
-                                          self.L2_ARP_TERM))
-            self.call_vpp('bridge_flags',
-                          bd_id=bridge_domain_id,
-                          is_set=1, feature_bitmap=flags)
+        self.call_vpp('bridge_flags',
+                      bd_id=bridge_domain_id,
+                      is_set=0,
+                      flags=(self.L2_LEARN | self.L2_FWD |
+                             self.L2_FLOOD |
+                             self.L2_UU_FLOOD | self.L2_ARP_TERM))
+        self.call_vpp('bridge_flags',
+                      bd_id=bridge_domain_id,
+                      is_set=1, flags=flags)
 
     def bridge_enable_flooding(self, bridge_domain_id):
         # type: (int) -> None
@@ -710,65 +698,37 @@ class VPPInterface(object):
 
     def add_to_bridge(self, bridx, *ifidxes):
         # type: (int, *int) -> None
-        if self.ver_ge(18, 10):
-            for ifidx in ifidxes:
-                self.call_vpp(
-                    'sw_interface_set_l2_bridge',
-                    rx_sw_if_index=ifidx, bd_id=bridx,
-                    port_type=self.L2_API_PORT_TYPE_NORMAL,  # 18.10+
-                    shg=0,              # shared horizon group
-                    enable=True)        # enable bridge mode
-        else:
-            for ifidx in ifidxes:
-                self.call_vpp(
-                    'sw_interface_set_l2_bridge',
-                    rx_sw_if_index=ifidx, bd_id=bridx,
-                    bvi=False,  # 18.07-
-                    shg=0,              # shared horizon group
-                    enable=True)        # enable bridge mode
+        for ifidx in ifidxes:
+            self.call_vpp(
+                'sw_interface_set_l2_bridge',
+                rx_sw_if_index=ifidx, bd_id=bridx,
+                port_type=self.L2_API_PORT_TYPE_NORMAL,  # 18.10+
+                shg=0,              # shared horizon group
+                enable=True)        # enable bridge mode
 
     def delete_from_bridge(self, *ifidxes):
         # type: (*int) -> None
-        if self.ver_ge(18, 10):
-            for ifidx in ifidxes:
-                self.call_vpp(
-                    'sw_interface_set_l2_bridge',
-                    rx_sw_if_index=ifidx,
-                    bd_id=0,            # no bridge id is necessary
-                    port_type=self.L2_API_PORT_TYPE_NORMAL,  # 18.10+
-                    shg=0,              # shared horizon group
-                    enable=False)       # disable bridge mode (sets l3 mode)
-        else:
-            for ifidx in ifidxes:
-                self.call_vpp(
-                    'sw_interface_set_l2_bridge',
-                    rx_sw_if_index=ifidx,
-                    bd_id=0,            # no bridge id is necessary
-                    bvi=False,  # 18.07-
-                    shg=0,              # shared horizon group
-                    enable=False)       # disable bridge mode (sets l3 mode)
+        for ifidx in ifidxes:
+            self.call_vpp(
+                'sw_interface_set_l2_bridge',
+                rx_sw_if_index=ifidx,
+                bd_id=0,            # no bridge id is necessary
+                port_type=self.L2_API_PORT_TYPE_NORMAL,  # 18.10+
+                shg=0,              # shared horizon group
+                enable=False)       # disable bridge mode (sets l3 mode)
 
     def set_loopback_bridge_bvi(self, loopback, bridge_id):
         # type: (int, int) -> None
         # Sets the specified loopback interface to act as  the BVI
         # for the bridge. This interface will act as a gateway and
         # terminate the VLAN.
-        if self.ver_ge(18, 10):
-            self.call_vpp(
-                'sw_interface_set_l2_bridge',
-                rx_sw_if_index=loopback,
-                bd_id=bridge_id,
-                shg=0,
-                port_type=self.L2_API_PORT_TYPE_BVI,  # 18.10+
-                enable=True)
-        else:
-            self.call_vpp(
-                'sw_interface_set_l2_bridge',
-                rx_sw_if_index=loopback,
-                bd_id=bridge_id,
-                shg=0,
-                bvi=True,  # 18.07-
-                enable=True)
+        self.call_vpp(
+            'sw_interface_set_l2_bridge',
+            rx_sw_if_index=loopback,
+            bd_id=bridge_id,
+            shg=0,
+            port_type=self.L2_API_PORT_TYPE_BVI,  # 18.10+
+            enable=True)
 
     def get_bridge_bvi(self, bd_id):
         # type: (int) -> Optional[int]
@@ -940,14 +900,8 @@ class VPPInterface(object):
     def set_interface_vrf(self, if_idx, vrf_id, is_ipv6=False):
         # Set the interface's VRF to the routers's table id
         # allocated by neutron. If the VRF table does not exist, create it.
-        if self.ver_ge(19, 8):
-            # VPP 19.08 onwards
-            table = {'table_id': vrf_id, 'is_ip6': is_ipv6}
-            self.call_vpp('ip_table_add_del', table=table, is_add=True)
-        else:
-            # VPP 19.04 and older
-            self.call_vpp('ip_table_add_del', table_id=vrf_id, is_ipv6=is_ipv6,
-                          is_add=True)
+        table = {'table_id': vrf_id, 'is_ip6': is_ipv6}
+        self.call_vpp('ip_table_add_del', table=table, is_add=True)
         self.call_vpp('sw_interface_set_table', sw_if_index=if_idx,
                       vrf_id=vrf_id, is_ipv6=is_ipv6)
 
@@ -1114,70 +1068,32 @@ class VPPInterface(object):
             if is_local:
                 self.LOG.debug('Adding a local route %s/%s in router vrf:%s',
                                ip, prefixlen, vrf)
-                if self.ver_ge(19, 8):
-                    # VPP 19.08 onwards
-                    paths = []
-                    paths.append(self.encode_route_path(vrf, is_local,
-                                 is_ipv6))
-                    route = self.encode_route(vrf, prefix, paths)
-                    self.call_vpp('ip_route_add_del', is_add=1, is_multipath=0,
-                                  route=route)
-                else:
-                    # VPP 19.04 and older
-                    self.call_vpp('ip_add_del_route', is_add=1, table_id=vrf,
-                                  dst_address=ip_address,
-                                  dst_address_length=prefixlen,
-                                  is_local=is_local,
-                                  is_ipv6=is_ipv6,
-                                  next_hop_via_label=0xfffff + 1)
+                paths = []
+                paths.append(self.encode_route_path(vrf, is_local,
+                             is_ipv6))
+                route = self.encode_route(vrf, prefix, paths)
+                self.call_vpp('ip_route_add_del', is_add=1, is_multipath=0,
+                              route=route)
             elif next_hop_address is not None:
                 self.LOG.debug('Adding route %s/%s to %s in router vrf:%s',
                                ip, prefixlen, next_hop, vrf)
-                if self.ver_ge(19, 8):
-                    # VPP 19.08 onwards
-                    paths = []
-                    paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
-                                 next_hop_address=next_hop_address,
-                                 next_hop_sw_if_index=next_hop_sw_if_index))
-                    route = self.encode_route(vrf, prefix, paths)
-                    self.call_vpp('ip_route_add_del', is_add=1, is_multipath=0,
-                                  route=route)
-                else:
-                    # VPP 19.04 and older
-                    self.call_vpp('ip_add_del_route', is_add=1, table_id=vrf,
-                                  dst_address=ip_address,
-                                  dst_address_length=prefixlen,
-                                  is_local=is_local,
-                                  next_hop_address=next_hop_address,
-                                  next_hop_sw_if_index=next_hop_sw_if_index,
-                                  is_ipv6=is_ipv6,
-                                  # The next_hop_via_label param is required
-                                  # due to a bug in the 17.07 VPP release. VPP
-                                  # looks for an MPLS label in the route and
-                                  # crashes if it cannot find one. The label
-                                  # value:0xfffff+1 is an invalid MPLS label.
-                                  next_hop_via_label=0xfffff + 1)
+                paths = []
+                paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
+                             next_hop_address=next_hop_address,
+                             next_hop_sw_if_index=next_hop_sw_if_index))
+                route = self.encode_route(vrf, prefix, paths)
+                self.call_vpp('ip_route_add_del', is_add=1, is_multipath=0,
+                              route=route)
             elif next_hop_sw_if_index:
                 self.LOG.debug('Exporting route %s/%s from vrf:%s to '
                                'next_hop_swif_idx: %s',
                                ip, prefixlen, vrf, next_hop_sw_if_index)
-                if self.ver_ge(19, 8):
-                    # VPP 19.08 onwards
-                    paths = []
-                    paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
-                                 next_hop_sw_if_index=next_hop_sw_if_index))
-                    route = self.encode_route(vrf, prefix, paths)
-                    self.call_vpp('ip_route_add_del', is_add=1, is_multipath=0,
-                                  route=route)
-                else:
-                    # VPP 19.04 and older
-                    self.call_vpp('ip_add_del_route', is_add=1, table_id=vrf,
-                                  dst_address=ip_address,
-                                  dst_address_length=prefixlen,
-                                  is_local=is_local,
-                                  next_hop_sw_if_index=next_hop_sw_if_index,
-                                  is_ipv6=is_ipv6,
-                                  next_hop_via_label=0xfffff + 1)
+                paths = []
+                paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
+                             next_hop_sw_if_index=next_hop_sw_if_index))
+                route = self.encode_route(vrf, prefix, paths)
+                self.call_vpp('ip_route_add_del', is_add=1, is_multipath=0,
+                              route=route)
 
     def delete_ip_route(self, vrf, ip_address, prefixlen, next_hop_address,
                         next_hop_sw_if_index, is_ipv6=False, is_local=False):
@@ -1204,64 +1120,32 @@ class VPPInterface(object):
             if is_local:
                 self.LOG.debug('Deleting a local route %s/%s in router vrf:%s',
                                ip, prefixlen, vrf)
-                if self.ver_ge(19, 8):
-                    # VPP 19.08 onwards
-                    paths = []
-                    paths.append(self.encode_route_path(vrf, is_local,
-                                 is_ipv6))
-                    route = self.encode_route(vrf, prefix, paths)
-                    self.call_vpp('ip_route_add_del', is_add=0, is_multipath=0,
-                                  route=route)
-                else:
-                    # VPP 19.04 and older
-                    self.call_vpp('ip_add_del_route', is_add=0, table_id=vrf,
-                                  dst_address=ip_address,
-                                  dst_address_length=prefixlen,
-                                  is_local=is_local,
-                                  is_ipv6=is_ipv6)
+                paths = []
+                paths.append(self.encode_route_path(vrf, is_local,
+                             is_ipv6))
+                route = self.encode_route(vrf, prefix, paths)
+                self.call_vpp('ip_route_add_del', is_add=0, is_multipath=0,
+                              route=route)
             elif next_hop_address is not None:
                 self.LOG.debug('Deleting route %s/%s to %s in router vrf:%s',
                                ip, prefixlen, next_hop, vrf)
-                if self.ver_ge(19, 8):
-                    # VPP 19.08 onwards
-                    paths = []
-                    paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
-                                 next_hop_address=next_hop_address,
-                                 next_hop_sw_if_index=next_hop_sw_if_index))
-                    route = self.encode_route(vrf, prefix, paths)
-                    self.call_vpp('ip_route_add_del', is_add=0, is_multipath=0,
-                                  route=route)
-                else:
-                    # VPP 19.04 and older
-                    self.call_vpp('ip_add_del_route', is_add=0, table_id=vrf,
-                                  dst_address=ip_address,
-                                  dst_address_length=prefixlen,
-                                  is_local=is_local,
-                                  next_hop_address=next_hop_address,
-                                  next_hop_sw_if_index=next_hop_sw_if_index,
-                                  is_ipv6=is_ipv6,
-                                  next_hop_via_label=0xfffff + 1)
+                paths = []
+                paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
+                             next_hop_address=next_hop_address,
+                             next_hop_sw_if_index=next_hop_sw_if_index))
+                route = self.encode_route(vrf, prefix, paths)
+                self.call_vpp('ip_route_add_del', is_add=0, is_multipath=0,
+                              route=route)
             elif next_hop_sw_if_index:
                 self.LOG.debug('Deleting exported net:%s/%s in router '
                                'vrf:%s to next_hop_swif_idx: %s',
                                ip, prefixlen, vrf, next_hop_sw_if_index)
-                if self.ver_ge(19, 8):
-                    # VPP 19.08 onwards
-                    paths = []
-                    paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
-                                 next_hop_sw_if_index=next_hop_sw_if_index))
-                    route = self.encode_route(vrf, prefix, paths)
-                    self.call_vpp('ip_route_add_del', is_add=0, is_multipath=0,
-                                  route=route)
-                else:
-                    # VPP 19.04 and older
-                    self.call_vpp('ip_add_del_route', is_add=0, table_id=vrf,
-                                  dst_address=ip_address,
-                                  dst_address_length=prefixlen,
-                                  is_local=is_local,
-                                  next_hop_sw_if_index=next_hop_sw_if_index,
-                                  is_ipv6=is_ipv6,
-                                  next_hop_via_label=0xfffff + 1)
+                paths = []
+                paths.append(self.encode_route_path(vrf, is_local, is_ipv6,
+                             next_hop_sw_if_index=next_hop_sw_if_index))
+                route = self.encode_route(vrf, prefix, paths)
+                self.call_vpp('ip_route_add_del', is_add=0, is_multipath=0,
+                              route=route)
 
     def route_in_vrf(self, vrf, ip_address, prefixlen,
                      next_hop_address, sw_if_index, is_ipv6=False,
@@ -1275,17 +1159,10 @@ class VPPInterface(object):
         The params: ip_address and next_hop_address are integer
         representations of the IPv4 or Ipv6 address.
         """
-        if self.ver_ge(19, 8):
-            # VPP 19.08 onwards ip_fib_dump/ip6_fib_dump are replaced by
-            # ip_route_dump
-            table = {'table_id': vrf, 'is_ip6': is_ipv6}
-            routes = self.call_vpp('ip_route_dump', table=table)
-        else:
-            # VPP 19.04 and older
-            if not is_ipv6:
-                routes = self.call_vpp('ip_fib_dump')
-            else:
-                routes = self.call_vpp('ip6_fib_dump')
+        # VPP 19.08 onwards ip_fib_dump/ip6_fib_dump are replaced by
+        # ip_route_dump
+        table = {'table_id': vrf, 'is_ip6': is_ipv6}
+        routes = self.call_vpp('ip_route_dump', table=table)
         # Iterate though the routes and check for a matching route tuple
         # in the VRF table by checking the ip_address, prefixlen and
         # Convert the ip & next_hop addresses to an ipaddress format for
@@ -1302,39 +1179,24 @@ class VPPInterface(object):
         # module perhaps if ever needed in future.
         def nexthop_ipaddr(p):
             # Return the ipaddress.IPvXAddress in the route path 'p'
-            if self.ver_ge(19, 8):
-                addr = p.nh.address.ip6 if is_ipv6 else p.nh.address.ip4
-            else:
-                addr = ipaddress.ip_address(six.text_type(
-                    bytes_to_ip(p.next_hop, is_ipv6)))
+            addr = p.nh.address.ip6 if is_ipv6 else p.nh.address.ip4
             return addr
 
         def any_local_routes(paths):
             # Check if there's any local route
-            if self.ver_ge(19, 8):
-                return any((p.type == self.ROUTE_TYPE_LOCAL for p in paths))
-            else:
-                return any((p.is_local for p in paths))
+            return any((p.type == self.ROUTE_TYPE_LOCAL for p in paths))
 
         for route in routes:
-            if self.ver_ge(19, 8):
-                # VPP 19.08 onwards route is a bona-fide type of its own,
-                # namely vl_api_ip_route_t, and is now a field in the object
-                # returned in ip_route_details. In addition, the route prefix
-                # too is now returned as the new vl_api_prefix_t type which
-                # maps to IPv4Network/IPv6Network type in Python.
-                route = route.route
-                paths = route.paths
-                table_id = route.table_id
-                address = route.prefix.network_address
-                address_len = route.prefix.prefixlen
-            else:
-                # VPP 19.04 and older
-                paths = route.path
-                table_id = route.table_id
-                address = ipaddress.ip_address(six.text_type(
-                    bytes_to_ip(route.address, is_ipv6)))
-                address_len = route.address_length
+            # VPP 19.08 onwards route is a bona-fide type of its own,
+            # namely vl_api_ip_route_t, and is now a field in the object
+            # returned in ip_route_details. In addition, the route prefix
+            # too is now returned as the new vl_api_prefix_t type which
+            # maps to IPv4Network/IPv6Network type in Python.
+            route = route.route
+            paths = route.paths
+            table_id = route.table_id
+            address = route.prefix.network_address
+            address_len = route.prefix.prefixlen
             # if there's a valid next_hop_address check for the route by
             # including it
             if (next_hop_address and table_id == vrf and
@@ -1399,40 +1261,26 @@ class VPPInterface(object):
         #
         # NB: Use VPP 19.08.1 and above only
         ext_intf_ip = ipaddress.ip_interface(six.text_type(ext_intf_ip))
-        if self.ver_ge(19, 8):
-            # VPP 19.08.1 onwards ip_fib_dump/ip6_fib_dump are replaced by
-            # ip_route_dump
-            table = {'table_id': vrf, 'is_ip6': is_ipv6}
-            routes = self.call_vpp('ip_route_dump', table=table)
-        else:
-            # VPP 19.04 and older
-            if not is_ipv6:
-                routes = self.call_vpp('ip_fib_dump')
-            else:
-                routes = self.call_vpp('ip6_fib_dump')
+        # VPP 19.08.1 onwards ip_fib_dump/ip6_fib_dump are replaced by
+        # ip_route_dump
+        table = {'table_id': vrf, 'is_ip6': is_ipv6}
+        routes = self.call_vpp('ip_route_dump', table=table)
 
         for route in routes:
-            if self.ver_ge(19, 8):
-                # VPP 19.08 onwards route is a bona-fide type of its own,
-                # named vl_api_ip_route_t, and is now a field in the object
-                # returned in ip_route_details
-                route = route.route
-                paths = route.paths
-                # VPP 19.08 onwards the route prefix is of the new
-                # vl_api_prefix_t type mapped to [IPv4|IPv6]Network by PAPI
-                address = route.prefix.network_address
-                # NOTE(onong): not checking table_id == vrf anymore as it is
-                # explicitly passed to the call to ip_route_dump
-                if (any((p.type == self.ROUTE_TYPE_LOCAL for p in paths)) and
-                        address in ext_intf_ip.network):
-                    # TODO(onong): watch out in py3
-                    yield address.exploded
-            elif (route.table_id == vrf and
-                  any((p.is_local for p in route.path)) and
-                  (ipaddress.ip_address(route.address) in
-                      ext_intf_ip.network)):
-                # For VPP 19.04 and older
-                yield bytes_to_ip(route.address, is_ipv6)
+            # VPP 19.08 onwards route is a bona-fide type of its own,
+            # named vl_api_ip_route_t, and is now a field in the object
+            # returned in ip_route_details
+            route = route.route
+            paths = route.paths
+            # VPP 19.08 onwards the route prefix is of the new
+            # vl_api_prefix_t type mapped to [IPv4|IPv6]Network by PAPI
+            address = route.prefix.network_address
+            # NOTE(onong): not checking table_id == vrf anymore as it is
+            # explicitly passed to the call to ip_route_dump
+            if (any((p.type == self.ROUTE_TYPE_LOCAL for p in paths)) and
+                    address in ext_intf_ip.network):
+                # TODO(onong): watch out in py3
+                yield address.exploded
 
     def get_interface_ip_addresses(self, sw_if_idx):
         """Returns a list of all IP addresses assigned to an interface.
@@ -1465,15 +1313,9 @@ class VPPInterface(object):
         v4_addrs = self.call_vpp('ip_address_dump', sw_if_index=sw_if_idx,
                                  is_ipv6=False)
         for v4_addr in v4_addrs:
-            if self.ver_ge(19, 8):
-                # VPP 19.08.1 and onwards PAPI returns IPv4Interface object
-                sanitized_v4 = v4_addr.prefix.ip
-                prefix_len = v4_addr.prefix.network.prefixlen
-            else:
-                # VPP 19.04 and older
-                # Only count the first 4 bytes for v4 addresses
-                sanitized_v4 = ipaddress.ip_address(v4_addr.ip[:4])
-                prefix_len = v4_addr.prefix_length
+            # VPP 19.08.1 and onwards PAPI returns IPv4Interface object
+            sanitized_v4 = v4_addr.prefix.ip
+            prefix_len = v4_addr.prefix.network.prefixlen
             # The standard library has ipinterface, but it's hard
             # to construct with a numeric netmask
             int_addrs.append((sanitized_v4, prefix_len))
@@ -1481,14 +1323,9 @@ class VPPInterface(object):
         v6_addrs = self.call_vpp('ip_address_dump', sw_if_index=sw_if_idx,
                                  is_ipv6=True)
         for v6_addr in v6_addrs:
-            if self.ver_ge(19, 8):
-                # VPP 19.08.1 and onwards PAPI returns IPv6Interface object
-                sanitized_v6 = v6_addr.prefix.ip
-                prefix_len = v6_addr.prefix.network.prefixlen
-            else:
-                # VPP 19.04 and older
-                sanitized_v6 = ipaddress.ip_address(v6_addr.ip)
-                prefix_len = v6_addr.prefix_length
+            # VPP 19.08.1 and onwards PAPI returns IPv6Interface object
+            sanitized_v6 = v6_addr.prefix.ip
+            prefix_len = v6_addr.prefix.network.prefixlen
             int_addrs.append((sanitized_v6, prefix_len))
         return int_addrs
 
@@ -1512,20 +1349,13 @@ class VPPInterface(object):
 
     # Enables or Disables the NAT feature on an interface
     def set_snat_on_interface(self, sw_if_index, is_inside=1, is_add=1):
-        if self.ver_ge(19, 8):
-            # In VPP 19.08, the is_inside field is part of the new flags
-            # field which is a bitmask
-            flags = self.IS_INSIDE if is_inside else self.IS_OUTSIDE
-            self.call_vpp('nat44_interface_add_del_feature',
-                          sw_if_index=sw_if_index,
-                          flags=flags,
-                          is_add=is_add)
-        else:
-            # VPP 19.04 and older
-            self.call_vpp('nat44_interface_add_del_feature',
-                          sw_if_index=sw_if_index,
-                          is_inside=is_inside,
-                          is_add=is_add)
+        # In VPP 19.08, the is_inside field is part of the new flags
+        # field which is a bitmask
+        flags = self.IS_INSIDE if is_inside else self.IS_OUTSIDE
+        self.call_vpp('nat44_interface_add_del_feature',
+                      sw_if_index=sw_if_index,
+                      flags=flags,
+                      is_add=is_add)
 
     # Enable or Disable the dynamic NAT feature on the outside interface
     def snat_overload_on_interface_address(self, sw_if_index, is_add=1):
@@ -1538,15 +1368,10 @@ class VPPInterface(object):
         """Returns the sw_if_indices of ext. interfaces with SNAT enabled"""
         ifidxlist = []
         for intf in self.call_vpp('nat44_interface_dump'):
-            if self.ver_ge(19, 8):
-                # In VPP 19.08, the is_inside field is part of the new flags
-                # field which is a bitmask
-                if intf.flags & self.IS_OUTSIDE:
-                    ifidxlist.append(intf.sw_if_index)
-            else:
-                # VPP 19.04 and older
-                if intf.is_inside == 0:
-                    ifidxlist.append(intf.sw_if_index)
+            # In VPP 19.08, the is_inside field is part of the new flags
+            # field which is a bitmask
+            if intf.flags & self.IS_OUTSIDE:
+                ifidxlist.append(intf.sw_if_index)
         return ifidxlist
 
     def get_snat_interfaces(self):
@@ -1563,15 +1388,10 @@ class VPPInterface(object):
         snat_static_mappings = self.call_vpp('nat44_static_mapping_dump')
         for static_mapping in snat_static_mappings:
             addr = ""
-            if self.ver_ge(19, 8):
-                # In VPP 19.08, vl_api_ip4_address_t type is returned by VPP
-                # and which is mapped to IPv4Address by PAPI
-                # TODO(onong): watch out in py3
-                addr = static_mapping.local_ip_address.exploded
-            else:
-                # VPP 19.04 and older
-                addr = str(ipaddress.IPv4Address(
-                    static_mapping.local_ip_address[:4]))
+            # In VPP 19.08, vl_api_ip4_address_t type is returned by VPP
+            # and which is mapped to IPv4Address by PAPI
+            # TODO(onong): watch out in py3
+            addr = static_mapping.local_ip_address.exploded
             snat_local_ipaddresses.append(addr)
         return snat_local_ipaddresses
 
@@ -1596,21 +1416,12 @@ class VPPInterface(object):
                                           )
             for session in user_sessions:
                 # Delete all dynamic NAT translations
-                if self.ver_ge(19, 8):
-                    # In VPP 19.08, IS_INSIDE, IS_STATIC etc need to be
-                    # specified in the new field flags
-                    if not session.flags & self.IS_STATIC:
-                        flags = self.IS_INSIDE
-                        self.call_vpp('nat44_del_session',
-                                      flags=flags,   # inside
-                                      protocol=session.protocol,
-                                      address=packed_ip_addr,
-                                      vrf_id=user_vrf,
-                                      port=session.inside_port)
-                elif not session.is_static:
-                    # VPP 19.04 and older
+                # In VPP 19.08, IS_INSIDE, IS_STATIC etc need to be
+                # specified in the new field flags
+                if not session.flags & self.IS_STATIC:
+                    flags = self.IS_INSIDE
                     self.call_vpp('nat44_del_session',
-                                  is_in=1,   # inside
+                                  flags=flags,   # inside
                                   protocol=session.protocol,
                                   address=packed_ip_addr,
                                   vrf_id=user_vrf,
@@ -1627,30 +1438,17 @@ class VPPInterface(object):
         # and they are of type unicode. We need to convert it into bytes like
         # object. str() works on py27 bcoz str and bytes are the same. But on
         # py3, str is unicode so this will need changes in py3
-        if self.ver_ge(19, 8):
-            local_ip = ipaddress.IPv4Address(local_ip).packed
-            external_ip = ipaddress.IPv4Address(external_ip).packed
-            self.call_vpp('nat44_add_del_static_mapping',
-                          local_ip_address=local_ip,
-                          external_ip_address=external_ip,
-                          external_sw_if_index=0xFFFFFFFF,  # -1 = Not used
-                          local_port=0,     # 0 = ignore
-                          external_port=0,  # 0 = ignore
-                          flags=self.ADDR_ONLY,      # 1 = address only mapping
-                          vrf_id=tenant_vrf,
-                          is_add=is_add)    # 1 = add, 0 = delete
-        else:
-            local_ip = str(ipaddress.IPv4Address(local_ip).packed)
-            external_ip = str(ipaddress.IPv4Address(external_ip).packed)
-            self.call_vpp('nat44_add_del_static_mapping',
-                          local_ip_address=local_ip,
-                          external_ip_address=external_ip,
-                          external_sw_if_index=0xFFFFFFFF,  # -1 = Not used
-                          local_port=0,     # 0 = ignore
-                          external_port=0,  # 0 = ignore
-                          addr_only=1,      # 1 = address only mapping
-                          vrf_id=tenant_vrf,
-                          is_add=is_add)    # 1 = add, 0 = delete
+        local_ip = ipaddress.IPv4Address(local_ip).packed
+        external_ip = ipaddress.IPv4Address(external_ip).packed
+        self.call_vpp('nat44_add_del_static_mapping',
+                      local_ip_address=local_ip,
+                      external_ip_address=external_ip,
+                      external_sw_if_index=0xFFFFFFFF,  # -1 = Not used
+                      local_port=0,     # 0 = ignore
+                      external_port=0,  # 0 = ignore
+                      flags=self.ADDR_ONLY,      # 1 = address only mapping
+                      vrf_id=tenant_vrf,
+                      is_add=is_add)    # 1 = add, 0 = delete
 
     def get_snat_addresses(self):
         ret_addrs = []
