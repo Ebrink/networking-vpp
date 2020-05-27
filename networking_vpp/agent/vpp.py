@@ -136,251 +136,11 @@ def get_api_messages():
 
 @singleton
 class VPPInterface(object):
-    # Note(onong): Here's the complete NAT related enums for reference and for
-    # future. We just need few for now.
-    # enum nat_config_flags : u8
-    # {
-    #   NAT_IS_NONE = 0x00,
-    #   NAT_IS_TWICE_NAT = 0x01,
-    #   NAT_IS_SELF_TWICE_NAT = 0x02,
-    #   NAT_IS_OUT2IN_ONLY = 0x04,
-    #   NAT_IS_ADDR_ONLY = 0x08,
-    #   NAT_IS_OUTSIDE = 0x10,
-    #   NAT_IS_INSIDE = 0x20,
-    #   NAT_IS_STATIC = 0x40,
-    #   NAT_IS_EXT_HOST_VALID = 0x80,
-    # };
-    ADDR_ONLY = 0x08
-    IS_OUTSIDE = 0x10
-    IS_INSIDE = 0x20
-    IS_STATIC = 0x40
-    # Note(onong): Here's the complete FIB_PATH_TYPE defs for reference and for
-    # future. We just need IPv4 and IPv6 for now.
-    # class FibPathType:
-    #     FIB_PATH_TYPE_NORMAL = 0
-    #     FIB_PATH_TYPE_LOCAL = 1
-    #     FIB_PATH_TYPE_DROP = 2
-    #     FIB_PATH_TYPE_UDP_ENCAP = 3
-    #     FIB_PATH_TYPE_BIER_IMP = 4
-    #     FIB_PATH_TYPE_ICMP_UNREACH = 5
-    #     FIB_PATH_TYPE_ICMP_PROHIBIT = 6
-    #     FIB_PATH_TYPE_SOURCE_LOOKUP = 7
-    #     FIB_PATH_TYPE_DVR = 8
-    #     FIB_PATH_TYPE_INTERFACE_RX = 9
-    #     FIB_PATH_TYPE_CLASSIFY = 10
-    ROUTE_TYPE_NORMAL = 0
-    ROUTE_TYPE_LOCAL = 1
-    # Note(onong): Here's the complete FIB_PATH_PROTO related defs for
-    # reference and for future. We just need few for now.
-    # class FibPathProto:
-    #     FIB_PATH_NH_PROTO_IP4 = 0
-    #     FIB_PATH_NH_PROTO_IP6 = 1
-    #     FIB_PATH_NH_PROTO_MPLS = 2
-    #     FIB_PATH_NH_PROTO_ETHERNET = 3
-    #     FIB_PATH_NH_PROTO_BIER = 4
-    #     FIB_PATH_NH_PROTO_NSH = 5
-    PROTO_IPV4 = 0
-    PROTO_IPV6 = 1
-    # Note(onong): In 20.01, sw_interface_set_flags has a new field 'flags' of
-    # type vl_api_if_status_flags_t which takes the following values:
-    #
-    # enum if_status_flags
-    # {
-    #   IF_STATUS_API_FLAG_ADMIN_UP = 1,
-    #   IF_STATUS_API_FLAG_LINK_UP = 2,
-    # };
-    IF_FLAG_ADMIN_UP = 1
-    IF_FLAG_ADMIN_DOWN = 0
+    """The interface to VPP (through PAPI - VPP Python API)
 
-    def get_interfaces(self):
-        # type: () -> Iterator[dict]
-        t = self.call_vpp('sw_interface_dump')
-
-        for iface in t:
-            # Note(onong): VPP 19.08.1 onwards interface_name and tag fields
-            # are type "string" instead of the earlier "u8". In python3, PAPI
-            # converts "string" type to python str whereas in python2 it
-            # converts to Unicode. So, no need for fix_string on interface_name
-            # and tag fields anymore.
-            #
-            # NB: PLEASE READ THIS: the current usage of interface_name and tag
-            # in the rest of the code does not pose any problems in python2 but
-            # for any new usage case please make sure to understand that the
-            # said fields are "Unicode" and not "bytes/str" in python2 from VPP
-            # 19.08.1 onwards.
-            yield {'name': iface.interface_name,
-                   'tag': iface.tag,
-                   'mac': iface.l2_address,
-                   'sw_if_idx': iface.sw_if_index,
-                   'sup_sw_if_idx': iface.sup_sw_if_index
-                   }
-
-    def get_ifidx_by_name(self, name):
-        # type: (str) -> Optional[int]
-        for iface in self.get_interfaces():
-            if iface['name'] == name:
-                return iface['sw_if_idx']
-        return None
-
-    def get_ifidx_mac_address(self, ifidx):
-        # type: (int) -> Optional[bytes]
-
-        for iface in self.get_interfaces():
-            if iface['sw_if_idx'] == ifidx:
-                return iface['mac']
-        return None
-
-    def get_ifidx_by_tag(self, tag):
-        # type: (str) -> Optional[int]
-        for iface in self.get_interfaces():
-            if iface['tag'] == tag:
-                return iface['sw_if_idx']
-        return None
-
-    def set_interface_tag(self, if_idx, tag):
-        # type: (int, str) -> None
-        """Define interface tag field.
-
-        VPP papi does not allow to set interface tag
-        on interface creation for subinterface or loopback).
-        """
-        # TODO(ijw): this is a race condition - we should create the
-        # interface with a tag.
-        self.call_vpp('sw_interface_tag_add_del',
-                      is_add=1,
-                      sw_if_index=if_idx,
-                      # Note(onong): VPP 19.08.1 onwards, the 'tag' field is
-                      # of type 'string' and PAPI cribs if it is passed the old
-                      # bytes/str type in python3.
-                      #
-                      # What about python2?
-                      # Well, python2 is pretty cool about the intermingling of
-                      # bytes/str/unicode and hence things work fine.
-                      tag=tag)
-
-    def get_version(self):
-        # type: () -> str
-        t = self.call_vpp('show_version')
-
-        return t.version
-
-    def semver(self):
-        # type: () -> Tuple[int, int, bool]
-        """Return the 'semantic' version components of a VPP version"""
-
-        # version string is in the form yy.mm{cruft}*
-        # the cruft is there if it's an interstitial version during
-        # the dev cycle, and note that these versions may have a
-        # changed and unpredictable API.
-        version_string = self.get_version()
-        yy = int(version_string[:2])
-        mm = int(version_string[3:5])
-        plus = len(version_string[5:]) != 0
-
-        return (yy, mm, plus)
-
-    def ver_ge(self, tyy, tmm):
-        # type: (int, int) -> bool
-        (yy, mm, plus) = self.semver()
-        if tyy < yy:
-            return True
-        elif tyy == yy and tmm <= mm:
-            return True
-        else:
-            return False
-
-    ########################################
-
-    def create_tap(self, ifname, mac=None, tag=""):
-        # type: (str, str, str) -> int
-        if mac is not None:
-            mac_bytes = mac_to_bytes(mac)
-            use_random_mac = False
-        else:
-            mac_bytes = mac_to_bytes('00:00:00:00:00:00')
-            use_random_mac = True
-
-        # Note(onong): In VPP 20.01, the following API changes have happened:
-        #      host_ip4_addr_set --> host_ip4_prefix_set
-        #      host_ip6_addr_set --> host_ip6_prefix_set
-        #      type of host_if_name changed from u8 to string
-        #      type of tag changed from u8 to string
-        t = self.call_vpp('tap_create_v2',
-                          use_random_mac=use_random_mac,
-                          mac_address=mac_bytes,
-                          host_if_name_set=True,
-                          host_if_name=ifname,
-                          id=0xffffffff,  # choose ifidx automatically
-                          host_ip4_prefix_set=False,
-                          host_ip6_prefix_set=False,
-                          host_bridge_set=False,
-                          host_namespace_set=False,
-                          host_mac_addr_set=False,
-                          tx_ring_sz=1024,
-                          rx_ring_sz=1024,
-                          tag=tag)
-
-        return t.sw_if_index  # will be -1 on failure (e.g. 'already exists')
-
-    def delete_tap(self, idx):
-        # type: (int) -> None
-        self.call_vpp('tap_delete_v2',
-                      sw_if_index=idx)
-
-    #############################
-
-    def create_vhostuser(self, ifpath, mac, tag,
-                         qemu_user=None, qemu_group=None, is_server=False):
-        # type: (str, str, str, Optional[str], Optional[str], bool) -> int
-
-        # Note(onong): In VPP 20.01, the following API changes have happened:
-        #      type of sock_filename changed from u8 to string
-        #      type of tag changed from u8 to string
-        t = self.call_vpp('create_vhost_user_if',
-                          is_server=is_server,
-                          sock_filename=ifpath,
-                          renumber=False,
-                          custom_dev_instance=0,
-                          use_custom_mac=True,
-                          mac_address=mac_to_bytes(mac),
-                          tag=tag)
-
-        if is_server and qemu_user is not None and qemu_group is not None:
-            # The permission that qemu runs as.
-            uid = pwd.getpwnam(qemu_user).pw_uid
-            gid = grp.getgrnam(qemu_group).gr_gid
-            os.chown(ifpath, uid, gid)
-            os.chmod(ifpath, 0o770)
-
-        if t.sw_if_index >= 0:
-            # TODO(ijw): This is a temporary fix to a 17.01 bug where new
-            # interfaces sometimes come up with VLAN rewrites set on them.
-            # It breaks atomicity of this call and it should be removed.
-            self.disable_vlan_rewrite(t.sw_if_index)
-
-        return t.sw_if_index
-
-    def delete_vhostuser(self, idx):
-        # type: (int) -> None
-        self.call_vpp('delete_vhost_user_if',
-                      sw_if_index=idx)
-
-    def get_vhostusers(self):
-        # type: () -> Iterator[Tuple[str, int]]
-        t = self.call_vpp('sw_interface_vhost_user_dump')
-
-        for interface in t:
-            yield (fix_string(interface.interface_name), interface)
-
-    # def is_vhostuser(self, iface_idx):
-    #     # type: (int) -> bool
-    #     for vhost in self.get_vhostusers():
-    #         if vhost.sw_if_index == iface_idx:
-    #             return True
-    #     return False
-
-    ########################################
-
+       This class encapsulates everything that has got to do with the agent's
+       interaction with VPP via PAPI.
+    """
     def __init__(
         self,
         log,  # type: logging.Logger
@@ -507,9 +267,254 @@ class VPPInterface(object):
 
         return t
 
+    def get_version(self):
+        # type: () -> str
+        t = self.call_vpp('show_version')
+
+        return t.version
+
+    def semver(self):
+        # type: () -> Tuple[int, int, bool]
+        """Return the 'semantic' version components of a VPP version"""
+
+        # version string is in the form yy.mm{cruft}*
+        # the cruft is there if it's an interstitial version during
+        # the dev cycle, and note that these versions may have a
+        # changed and unpredictable API.
+        version_string = self.get_version()
+        yy = int(version_string[:2])
+        mm = int(version_string[3:5])
+        plus = len(version_string[5:]) != 0
+
+        return (yy, mm, plus)
+
+    def ver_ge(self, tyy, tmm):
+        # type: (int, int) -> bool
+        (yy, mm, plus) = self.semver()
+        if tyy < yy:
+            return True
+        elif tyy == yy and tmm <= mm:
+            return True
+        else:
+            return False
+
     def disconnect(self):
         # type: () -> None
         self.call_vpp('disconnect')
+
+    # Note(onong): Here's the complete NAT related enums for reference and for
+    # future. We just need few for now.
+    # enum nat_config_flags : u8
+    # {
+    #   NAT_IS_NONE = 0x00,
+    #   NAT_IS_TWICE_NAT = 0x01,
+    #   NAT_IS_SELF_TWICE_NAT = 0x02,
+    #   NAT_IS_OUT2IN_ONLY = 0x04,
+    #   NAT_IS_ADDR_ONLY = 0x08,
+    #   NAT_IS_OUTSIDE = 0x10,
+    #   NAT_IS_INSIDE = 0x20,
+    #   NAT_IS_STATIC = 0x40,
+    #   NAT_IS_EXT_HOST_VALID = 0x80,
+    # };
+    ADDR_ONLY = 0x08
+    IS_OUTSIDE = 0x10
+    IS_INSIDE = 0x20
+    IS_STATIC = 0x40
+    # Note(onong): Here's the complete FIB_PATH_TYPE defs for reference and for
+    # future. We just need IPv4 and IPv6 for now.
+    # class FibPathType:
+    #     FIB_PATH_TYPE_NORMAL = 0
+    #     FIB_PATH_TYPE_LOCAL = 1
+    #     FIB_PATH_TYPE_DROP = 2
+    #     FIB_PATH_TYPE_UDP_ENCAP = 3
+    #     FIB_PATH_TYPE_BIER_IMP = 4
+    #     FIB_PATH_TYPE_ICMP_UNREACH = 5
+    #     FIB_PATH_TYPE_ICMP_PROHIBIT = 6
+    #     FIB_PATH_TYPE_SOURCE_LOOKUP = 7
+    #     FIB_PATH_TYPE_DVR = 8
+    #     FIB_PATH_TYPE_INTERFACE_RX = 9
+    #     FIB_PATH_TYPE_CLASSIFY = 10
+    ROUTE_TYPE_NORMAL = 0
+    ROUTE_TYPE_LOCAL = 1
+    # Note(onong): Here's the complete FIB_PATH_PROTO related defs for
+    # reference and for future. We just need few for now.
+    # class FibPathProto:
+    #     FIB_PATH_NH_PROTO_IP4 = 0
+    #     FIB_PATH_NH_PROTO_IP6 = 1
+    #     FIB_PATH_NH_PROTO_MPLS = 2
+    #     FIB_PATH_NH_PROTO_ETHERNET = 3
+    #     FIB_PATH_NH_PROTO_BIER = 4
+    #     FIB_PATH_NH_PROTO_NSH = 5
+    PROTO_IPV4 = 0
+    PROTO_IPV6 = 1
+    # Note(onong): In 20.01, sw_interface_set_flags has a new field 'flags' of
+    # type vl_api_if_status_flags_t which takes the following values:
+    #
+    # enum if_status_flags
+    # {
+    #   IF_STATUS_API_FLAG_ADMIN_UP = 1,
+    #   IF_STATUS_API_FLAG_LINK_UP = 2,
+    # };
+    IF_FLAG_ADMIN_UP = 1
+    IF_FLAG_ADMIN_DOWN = 0
+
+    def get_interfaces(self):
+        # type: () -> Iterator[dict]
+        t = self.call_vpp('sw_interface_dump')
+
+        for iface in t:
+            # Note(onong): VPP 19.08.1 onwards interface_name and tag fields
+            # are type "string" instead of the earlier "u8". In python3, PAPI
+            # converts "string" type to python str whereas in python2 it
+            # converts to Unicode. So, no need for fix_string on interface_name
+            # and tag fields anymore.
+            #
+            # NB: PLEASE READ THIS: the current usage of interface_name and tag
+            # in the rest of the code does not pose any problems in python2 but
+            # for any new usage case please make sure to understand that the
+            # said fields are "Unicode" and not "bytes/str" in python2 from VPP
+            # 19.08.1 onwards.
+            yield {'name': iface.interface_name,
+                   'tag': iface.tag,
+                   'mac': iface.l2_address,
+                   'sw_if_idx': iface.sw_if_index,
+                   'sup_sw_if_idx': iface.sup_sw_if_index
+                   }
+
+    def get_ifidx_by_name(self, name):
+        # type: (str) -> Optional[int]
+        for iface in self.get_interfaces():
+            if iface['name'] == name:
+                return iface['sw_if_idx']
+        return None
+
+    def get_ifidx_mac_address(self, ifidx):
+        # type: (int) -> Optional[bytes]
+
+        for iface in self.get_interfaces():
+            if iface['sw_if_idx'] == ifidx:
+                return iface['mac']
+        return None
+
+    def get_ifidx_by_tag(self, tag):
+        # type: (str) -> Optional[int]
+        for iface in self.get_interfaces():
+            if iface['tag'] == tag:
+                return iface['sw_if_idx']
+        return None
+
+    def set_interface_tag(self, if_idx, tag):
+        # type: (int, str) -> None
+        """Define interface tag field.
+
+        VPP papi does not allow to set interface tag
+        on interface creation for subinterface or loopback).
+        """
+        # TODO(ijw): this is a race condition - we should create the
+        # interface with a tag.
+        self.call_vpp('sw_interface_tag_add_del',
+                      is_add=1,
+                      sw_if_index=if_idx,
+                      # Note(onong): VPP 19.08.1 onwards, the 'tag' field is
+                      # of type 'string' and PAPI cribs if it is passed the old
+                      # bytes/str type in python3.
+                      #
+                      # What about python2?
+                      # Well, python2 is pretty cool about the intermingling of
+                      # bytes/str/unicode and hence things work fine.
+                      tag=tag)
+
+    ########################################
+
+    def create_tap(self, ifname, mac=None, tag=""):
+        # type: (str, str, str) -> int
+        if mac is not None:
+            mac_bytes = mac_to_bytes(mac)
+            use_random_mac = False
+        else:
+            mac_bytes = mac_to_bytes('00:00:00:00:00:00')
+            use_random_mac = True
+
+        # Note(onong): In VPP 20.01, the following API changes have happened:
+        #      host_ip4_addr_set --> host_ip4_prefix_set
+        #      host_ip6_addr_set --> host_ip6_prefix_set
+        #      type of host_if_name changed from u8 to string
+        #      type of tag changed from u8 to string
+        t = self.call_vpp('tap_create_v2',
+                          use_random_mac=use_random_mac,
+                          mac_address=mac_bytes,
+                          host_if_name_set=True,
+                          host_if_name=ifname,
+                          id=0xffffffff,  # choose ifidx automatically
+                          host_ip4_prefix_set=False,
+                          host_ip6_prefix_set=False,
+                          host_bridge_set=False,
+                          host_namespace_set=False,
+                          host_mac_addr_set=False,
+                          tx_ring_sz=1024,
+                          rx_ring_sz=1024,
+                          tag=tag)
+
+        return t.sw_if_index  # will be -1 on failure (e.g. 'already exists')
+
+    def delete_tap(self, idx):
+        # type: (int) -> None
+        self.call_vpp('tap_delete_v2',
+                      sw_if_index=idx)
+
+    #############################
+
+    def create_vhostuser(self, ifpath, mac, tag,
+                         qemu_user=None, qemu_group=None, is_server=False):
+        # type: (str, str, str, Optional[str], Optional[str], bool) -> int
+
+        # Note(onong): In VPP 20.01, the following API changes have happened:
+        #      type of sock_filename changed from u8 to string
+        #      type of tag changed from u8 to string
+        t = self.call_vpp('create_vhost_user_if',
+                          is_server=is_server,
+                          sock_filename=ifpath,
+                          renumber=False,
+                          custom_dev_instance=0,
+                          use_custom_mac=True,
+                          mac_address=mac_to_bytes(mac),
+                          tag=tag)
+
+        if is_server and qemu_user is not None and qemu_group is not None:
+            # The permission that qemu runs as.
+            uid = pwd.getpwnam(qemu_user).pw_uid
+            gid = grp.getgrnam(qemu_group).gr_gid
+            os.chown(ifpath, uid, gid)
+            os.chmod(ifpath, 0o770)
+
+        if t.sw_if_index >= 0:
+            # TODO(ijw): This is a temporary fix to a 17.01 bug where new
+            # interfaces sometimes come up with VLAN rewrites set on them.
+            # It breaks atomicity of this call and it should be removed.
+            self.disable_vlan_rewrite(t.sw_if_index)
+
+        return t.sw_if_index
+
+    def delete_vhostuser(self, idx):
+        # type: (int) -> None
+        self.call_vpp('delete_vhost_user_if',
+                      sw_if_index=idx)
+
+    def get_vhostusers(self):
+        # type: () -> Iterator[Tuple[str, int]]
+        t = self.call_vpp('sw_interface_vhost_user_dump')
+
+        for interface in t:
+            yield (fix_string(interface.interface_name), interface)
+
+    # def is_vhostuser(self, iface_idx):
+    #     # type: (int) -> bool
+    #     for vhost in self.get_vhostusers():
+    #         if vhost.sw_if_index == iface_idx:
+    #             return True
+    #     return False
+
+    ########################################
 
     ########################################
 
