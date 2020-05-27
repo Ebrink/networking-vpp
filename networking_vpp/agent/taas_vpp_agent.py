@@ -19,6 +19,7 @@ from ipaddress import ip_network
 from networking_vpp.constants import LEADIN
 from networking_vpp import etcdutils
 from networking_vpp.extension import VPPAgentExtensionBase
+from networking_vpp import vpp_constants as vpp_const
 import neutron.agent.linux.ip_lib as ip_lib
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -377,15 +378,12 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
         # Check Span direction
         direction = data['tap_flow']['direction']
-        DIR_RX = 1
-        DIR_TX = 2
-        DIR_TX_RX = 3
         if direction == 'IN':
-            direction = DIR_RX
+            direction = vpp_const.SPAN_RX
         elif direction == 'OUT':
-            direction = DIR_TX
+            direction = vpp_const.SPAN_TX
         else:
-            direction = DIR_TX_RX
+            direction = vpp_const.SPAN_RX_TX
 
         # Check Destination type
         if 'dest_type' in data:
