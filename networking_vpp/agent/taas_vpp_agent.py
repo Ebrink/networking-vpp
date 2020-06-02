@@ -244,11 +244,10 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         cidr = (ipaddr(self.esp_src_addr),
                 int(self.esp_plen))
         if cidr not in physnet_ip_addrs:
-            self.vppf.vpp.set_interface_address(
-                sw_if_index=if_physnet,
-                is_ipv6=1 if ipnet(self.esp_src_addr).version == 6 else 0,
-                address_length=int(self.esp_plen),
-                address=self.vppf._pack_address(self.esp_src_addr)
+            self.vppf.vpp.set_interface_ip(
+                if_physnet,
+                self.esp_src_addr,
+                self.esp_plen
                 )
         return (intf, if_physnet)
 
