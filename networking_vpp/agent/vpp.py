@@ -1495,7 +1495,7 @@ class VPPInterface(object):
                       eid_type=2,  # 2: mac_address
                       eid=mac_to_bytes(mac),
                       prefix_len=0,
-                      locator_set_name=locator_set_name,
+                      locator_set_name=binary_type(locator_set_name),
                       vni=vni)
 
     def del_lisp_local_mac(self, mac, vni, locator_set_name):
@@ -1505,7 +1505,7 @@ class VPPInterface(object):
                       eid_type=2,  # type 2: mac_address
                       eid=mac_to_bytes(mac),
                       prefix_len=0,
-                      locator_set_name=locator_set_name,
+                      locator_set_name=binary_type(locator_set_name),
                       vni=vni)
 
     def add_lisp_remote_mac(self, mac, vni, underlay):
@@ -1552,7 +1552,7 @@ class VPPInterface(object):
         """
         t = self.call_vpp('lisp_add_del_locator_set',
                           is_add=1,
-                          locator_set_name=locator_set_name,
+                          locator_set_name=binary_type(locator_set_name),
                           locator_num=0,
                           locators=[])
         return t.ls_index
@@ -1566,7 +1566,7 @@ class VPPInterface(object):
         """
         self.call_vpp('lisp_add_del_locator',
                       is_add=1,
-                      locator_set_name=locator_set_name,
+                      locator_set_name=binary_type(locator_set_name),
                       sw_if_index=sw_if_index,
                       priority=priority,
                       weight=weight)
@@ -1579,7 +1579,7 @@ class VPPInterface(object):
         """
         self.call_vpp('lisp_add_del_locator',
                       is_add=0,
-                      locator_set_name=locator_set_name,
+                      locator_set_name=binary_type(locator_set_name),
                       sw_if_index=sw_if_index)
 
     def add_lisp_arp_entry(self, mac, bridge_domain, ipv4_address):
@@ -1723,7 +1723,8 @@ class VPPInterface(object):
                                  'sw_if_idxs': [intf.sw_if_index for
                                                 intf in self.call_vpp(
                                                     'lisp_locator_dump',
-                                                    ls_name=str(ls_set_name))
+                                                    ls_name=binary_type(
+                                                        str(ls_set_name)))
                                                 ]
                                  }
                                 )

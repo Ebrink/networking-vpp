@@ -95,11 +95,10 @@ class GPEForwarder(object):
         cidr = (ipaddr(self.gpe_underlay_addr),
                 int(self.gpe_underlay_mask))
         if cidr not in physnet_ip_addrs:
-            self.vpp.set_interface_address(
-                sw_if_index=if_physnet,
-                is_ipv6=1 if ipnet(self.gpe_underlay_addr).version == 6 else 0,
-                address_length=int(self.gpe_underlay_mask),
-                address=self.vppf._pack_address(self.gpe_underlay_addr)
+            self.vpp.set_interface_ip(
+                if_idx=if_physnet,
+                ip=self.gpe_underlay_addr,
+                prefixlen=int(self.gpe_underlay_mask)
                 )
         return (intf, if_physnet)
 
