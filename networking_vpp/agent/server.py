@@ -46,7 +46,6 @@ import six
 import sys
 import time
 
-from networking_vpp._i18n import _
 from networking_vpp.agent import gpe
 from networking_vpp.agent import vpp
 from networking_vpp import compat
