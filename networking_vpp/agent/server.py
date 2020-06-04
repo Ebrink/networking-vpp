@@ -2778,7 +2778,13 @@ class EtcdListener(object):
 
         secgroup_ids = self.iface_awaiting_secgroups[iface_idx]
 
-        (id, bound_callback, props) = self.iface_state[iface_idx]
+        try:
+            (id, bound_callback, props) = self.iface_state[iface_idx]
+        except KeyError:  # The port was unbound before we could apply ACLs
+            LOG.info("Interface idx %s unbound before "
+                     "security-group(s) could be applied", iface_idx)
+            self.iface_awaiting_secgroups.pop(iface_idx, None)
+            return
 
         # TODO(ijw): this is a convenience for spotting L3 and DHCP
         # ports, but it's not the right way
