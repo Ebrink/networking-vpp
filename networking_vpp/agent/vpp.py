@@ -24,6 +24,7 @@ import ipaddress
 # logging is included purely for typechecks and pep8 objects to its inclusion
 import logging  # noqa
 from networking_vpp import constants as nvpp_const
+from networking_vpp import vpp_constants as vpp_const
 import os
 # Pep8 check fails, if json is used instead of jsonutils
 from oslo_serialization import jsonutils
@@ -35,11 +36,6 @@ from threading import Lock
 # typing is included purely for typechecks and pep8 objects to its inclusion
 from typing import List, Dict, Optional, Set, Tuple, Iterator  # noqa
 import vpp_papi  # type: ignore
-
-
-L2_VTR_POP_1 = 3
-L2_VTR_DISABLED = 0
-NO_BVI_SET = 4294967295
 
 
 def binary_type(s):
@@ -297,62 +293,6 @@ class VPPInterface(object):
             return True
         else:
             return False
-
-    # Note(onong): Here's the complete NAT related enums for reference and for
-    # future. We just need few for now.
-    # enum nat_config_flags : u8
-    # {
-    #   NAT_IS_NONE = 0x00,
-    #   NAT_IS_TWICE_NAT = 0x01,
-    #   NAT_IS_SELF_TWICE_NAT = 0x02,
-    #   NAT_IS_OUT2IN_ONLY = 0x04,
-    #   NAT_IS_ADDR_ONLY = 0x08,
-    #   NAT_IS_OUTSIDE = 0x10,
-    #   NAT_IS_INSIDE = 0x20,
-    #   NAT_IS_STATIC = 0x40,
-    #   NAT_IS_EXT_HOST_VALID = 0x80,
-    # };
-    ADDR_ONLY = 0x08
-    IS_OUTSIDE = 0x10
-    IS_INSIDE = 0x20
-    IS_STATIC = 0x40
-    # Note(onong): Here's the complete FIB_PATH_TYPE defs for reference and for
-    # future. We just need IPv4 and IPv6 for now.
-    # class FibPathType:
-    #     FIB_PATH_TYPE_NORMAL = 0
-    #     FIB_PATH_TYPE_LOCAL = 1
-    #     FIB_PATH_TYPE_DROP = 2
-    #     FIB_PATH_TYPE_UDP_ENCAP = 3
-    #     FIB_PATH_TYPE_BIER_IMP = 4
-    #     FIB_PATH_TYPE_ICMP_UNREACH = 5
-    #     FIB_PATH_TYPE_ICMP_PROHIBIT = 6
-    #     FIB_PATH_TYPE_SOURCE_LOOKUP = 7
-    #     FIB_PATH_TYPE_DVR = 8
-    #     FIB_PATH_TYPE_INTERFACE_RX = 9
-    #     FIB_PATH_TYPE_CLASSIFY = 10
-    ROUTE_TYPE_NORMAL = 0
-    ROUTE_TYPE_LOCAL = 1
-    # Note(onong): Here's the complete FIB_PATH_PROTO related defs for
-    # reference and for future. We just need few for now.
-    # class FibPathProto:
-    #     FIB_PATH_NH_PROTO_IP4 = 0
-    #     FIB_PATH_NH_PROTO_IP6 = 1
-    #     FIB_PATH_NH_PROTO_MPLS = 2
-    #     FIB_PATH_NH_PROTO_ETHERNET = 3
-    #     FIB_PATH_NH_PROTO_BIER = 4
-    #     FIB_PATH_NH_PROTO_NSH = 5
-    PROTO_IPV4 = 0
-    PROTO_IPV6 = 1
-    # Note(onong): In 20.01, sw_interface_set_flags has a new field 'flags' of
-    # type vl_api_if_status_flags_t which takes the following values:
-    #
-    # enum if_status_flags
-    # {
-    #   IF_STATUS_API_FLAG_ADMIN_UP = 1,
-    #   IF_STATUS_API_FLAG_LINK_UP = 2,
-    # };
-    IF_FLAG_ADMIN_UP = 1
-    IF_FLAG_ADMIN_DOWN = 0
 
     def get_interfaces(self):
         # type: () -> Iterator[dict]
@@ -637,9 +577,10 @@ class VPPInterface(object):
         self.call_vpp('bridge_flags',
                       bd_id=bridge_domain_id,
                       is_set=0,
-                      flags=(self.L2_LEARN | self.L2_FWD |
-                             self.L2_FLOOD |
-                             self.L2_UU_FLOOD | self.L2_ARP_TERM))
+                      flags=(vpp_const.L2_LEARN | vpp_const.L2_FWD |
+                             vpp_const.L2_FLOOD |
+                             vpp_const.L2_UU_FLOOD |
+                             vpp_const.L2_ARP_TERM))
         self.call_vpp('bridge_flags',
                       bd_id=bridge_domain_id,
                       is_set=1, flags=flags)
@@ -648,7 +589,7 @@ class VPPInterface(object):
         # type: (int) -> None
         self.LOG.debug("Enable flooding (disable mac learning) for bridge %d",
                        bridge_domain_id)
-        self.bridge_set_flags(bridge_domain_id, self.L2_UU_FLOOD)
+        self.bridge_set_flags(bridge_domain_id, vpp_const.L2_UU_FLOOD)
 
     def get_ifaces_in_bridge_domains(self):
         # type: () -> Dict[int, List[int]]
@@ -687,13 +628,6 @@ class VPPInterface(object):
         # type: (int) -> List[int]
         return self.get_ifaces_in_bridge_domains().get(bd_id, [])
 
-    # These constants are based on those coded into VPP and need to
-    # correspond to its values
-    # Port not in bridge
-    L2_API_PORT_TYPE_NORMAL = 0
-    # Port in bridge
-    L2_API_PORT_TYPE_BVI = 1
-
     ########################################
 
     def add_to_bridge(self, bridx, *ifidxes):
@@ -702,7 +636,7 @@ class VPPInterface(object):
             self.call_vpp(
                 'sw_interface_set_l2_bridge',
                 rx_sw_if_index=ifidx, bd_id=bridx,
-                port_type=self.L2_API_PORT_TYPE_NORMAL,  # 18.10+
+                port_type=vpp_const.L2_API_PORT_TYPE_NORMAL,  # 18.10+
                 shg=0,              # shared horizon group
                 enable=True)        # enable bridge mode
 
@@ -713,7 +647,7 @@ class VPPInterface(object):
                 'sw_interface_set_l2_bridge',
                 rx_sw_if_index=ifidx,
                 bd_id=0,            # no bridge id is necessary
-                port_type=self.L2_API_PORT_TYPE_NORMAL,  # 18.10+
+                port_type=vpp_const.L2_API_PORT_TYPE_NORMAL,  # 18.10+
                 shg=0,              # shared horizon group
                 enable=False)       # disable bridge mode (sets l3 mode)
 
@@ -727,7 +661,7 @@ class VPPInterface(object):
             rx_sw_if_index=loopback,
             bd_id=bridge_id,
             shg=0,
-            port_type=self.L2_API_PORT_TYPE_BVI,  # 18.10+
+            port_type=vpp_const.L2_API_PORT_TYPE_BVI,  # 18.10+
             enable=True)
 
     def get_bridge_bvi(self, bd_id):
@@ -735,7 +669,7 @@ class VPPInterface(object):
         # Returns a BVI interface index for the specified bridge id
         br_details = self.call_vpp('bridge_domain_dump', bd_id=bd_id)
         if (br_details and br_details[0].bvi_sw_if_index and
-                int(br_details[0].bvi_sw_if_index) != NO_BVI_SET):
+                int(br_details[0].bvi_sw_if_index) != vpp_const.NO_BVI_SET):
             return br_details[0].bvi_sw_if_index
 
         return None
@@ -837,10 +771,10 @@ class VPPInterface(object):
     ########################################
 
     def set_vlan_remove(self, if_id):
-        self.set_vlan_tag_rewrite(if_id, L2_VTR_POP_1, 0, 0, 0)
+        self.set_vlan_tag_rewrite(if_id, vpp_const.L2_VTR_POP_1, 0, 0, 0)
 
     def disable_vlan_rewrite(self, if_id):
-        self.set_vlan_tag_rewrite(if_id, L2_VTR_DISABLED, 0, 0, 0)
+        self.set_vlan_tag_rewrite(if_id, vpp_const.L2_VTR_DISABLED, 0, 0, 0)
 
     def set_vlan_tag_rewrite(self, if_id, vtr_op, push_dot1q, tag1, tag2):
         t = self.call_vpp('l2_interface_vlan_tag_rewrite',
@@ -863,7 +797,7 @@ class VPPInterface(object):
             # Note(onong): VPP 20.01 onwards, admin_up_down field is replaced
             # by 'flags' which is of type vl_api_if_status_flags_t
             self.call_vpp('sw_interface_set_flags',
-                          sw_if_index=ifidx, flags=self.IF_FLAG_ADMIN_UP)
+                          sw_if_index=ifidx, flags=vpp_const.IF_ADMIN_UP)
 
     def ifdown(self, *ifidxes):
         """Bring a list of interfaces down
@@ -874,7 +808,7 @@ class VPPInterface(object):
             # Note(onong): VPP 20.01 onwards, admin_up_down field is replaced
             # by 'flags' which is of type vl_api_if_status_flags_t
             self.call_vpp('sw_interface_set_flags',
-                          sw_if_index=ifidx, flags=self.IF_FLAG_ADMIN_DOWN)
+                          sw_if_index=ifidx, flags=vpp_const.IF_ADMIN_DOWN)
 
     ########################################
 
@@ -990,15 +924,15 @@ class VPPInterface(object):
 
         # Type of route = local/normal
         if is_local:
-            path['type'] = self.ROUTE_TYPE_LOCAL
+            path['type'] = vpp_const.ROUTE_LOCAL
         else:
-            path['type'] = self.ROUTE_TYPE_NORMAL
+            path['type'] = vpp_const.ROUTE_NORMAL
 
         # IPv4/IPv6
         if is_ipv6:
-            path['proto'] = self.PROTO_IPV6
+            path['proto'] = vpp_const.PROTO_IPV6
         else:
-            path['proto'] = self.PROTO_IPV4
+            path['proto'] = vpp_const.PROTO_IPV4
 
         # Is there a next hop address?
         if next_hop_address:
@@ -1184,7 +1118,7 @@ class VPPInterface(object):
 
         def any_local_routes(paths):
             # Check if there's any local route
-            return any((p.type == self.ROUTE_TYPE_LOCAL for p in paths))
+            return any((p.type == vpp_const.ROUTE_LOCAL for p in paths))
 
         for route in routes:
             # VPP 19.08 onwards route is a bona-fide type of its own,
@@ -1277,7 +1211,7 @@ class VPPInterface(object):
             address = route.prefix.network_address
             # NOTE(onong): not checking table_id == vrf anymore as it is
             # explicitly passed to the call to ip_route_dump
-            if (any((p.type == self.ROUTE_TYPE_LOCAL for p in paths)) and
+            if (any((p.type == vpp_const.ROUTE_LOCAL for p in paths)) and
                     address in ext_intf_ip.network):
                 # TODO(onong): watch out in py3
                 yield address.exploded
@@ -1351,7 +1285,7 @@ class VPPInterface(object):
     def set_snat_on_interface(self, sw_if_index, is_inside=1, is_add=1):
         # In VPP 19.08, the is_inside field is part of the new flags
         # field which is a bitmask
-        flags = self.IS_INSIDE if is_inside else self.IS_OUTSIDE
+        flags = vpp_const.IS_INSIDE if is_inside else vpp_const.IS_OUTSIDE
         self.call_vpp('nat44_interface_add_del_feature',
                       sw_if_index=sw_if_index,
                       flags=flags,
@@ -1370,7 +1304,7 @@ class VPPInterface(object):
         for intf in self.call_vpp('nat44_interface_dump'):
             # In VPP 19.08, the is_inside field is part of the new flags
             # field which is a bitmask
-            if intf.flags & self.IS_OUTSIDE:
+            if intf.flags & vpp_const.IS_OUTSIDE:
                 ifidxlist.append(intf.sw_if_index)
         return ifidxlist
 
@@ -1418,8 +1352,8 @@ class VPPInterface(object):
                 # Delete all dynamic NAT translations
                 # In VPP 19.08, IS_INSIDE, IS_STATIC etc need to be
                 # specified in the new field flags
-                if not session.flags & self.IS_STATIC:
-                    flags = self.IS_INSIDE
+                if not session.flags & vpp_const.IS_STATIC:
+                    flags = vpp_const.IS_INSIDE
                     self.call_vpp('nat44_del_session',
                                   flags=flags,   # inside
                                   protocol=session.protocol,
@@ -1446,7 +1380,7 @@ class VPPInterface(object):
                       external_sw_if_index=0xFFFFFFFF,  # -1 = Not used
                       local_port=0,     # 0 = ignore
                       external_port=0,  # 0 = ignore
-                      flags=self.ADDR_ONLY,      # 1 = address only mapping
+                      flags=vpp_const.ADDR_ONLY,  # 1 = address only mapping
                       vrf_id=tenant_vrf,
                       is_add=is_add)    # 1 = add, 0 = delete
 
@@ -1766,7 +1700,8 @@ class VPPInterface(object):
     ########################################
 
     #  direction : 1 = rx, 2 = tx, 3 tx & rx
-    def enable_port_mirroring(self, src_idx, dst_idx, direction=3, is_l2=1):
+    def enable_port_mirroring(self, src_idx, dst_idx,
+                              direction=vpp_const.SPAN_RX_TX, is_l2=1):
         self.LOG.debug("Enable span from %d to %d",
                        src_idx, dst_idx)
         self.call_vpp('sw_interface_span_enable_disable',
@@ -1781,19 +1716,13 @@ class VPPInterface(object):
         self.call_vpp('sw_interface_span_enable_disable',
                       sw_if_index_from=source_idx,
                       sw_if_index_to=dest_idx,
-                      state=0,
+                      state=vpp_const.SPAN_DISABLED,
                       is_l2=is_l2)
 
     def dump_port_mirroring(self):
         self.LOG.debug("Dump span")
         t = self.call_vpp('sw_interface_span_dump')
         return t
-
-    L2_LEARN = (1 << 0)
-    L2_FWD = (1 << 1)
-    L2_FLOOD = (1 << 2)
-    L2_UU_FLOOD = (1 << 3)
-    L2_ARP_TERM = (1 << 4)
 
     ########################################
 
@@ -1831,15 +1760,13 @@ class VPPInterface(object):
             tuns[(tun.vni, tun.dst_address,)] = tun.sw_if_index
         return tuns
 
-    TUNNEL_TYPE_ERSPAN = 2
-
     def create_erspan_tunnel(self, src_addr, dst_addr, is_ipv6, session_id):
         self.LOG.debug("Create ERSPAN tunnel session_id: %d", session_id)
         # Device instance (ifidx) is selected for us (~0)
         t = self.call_vpp('gre_add_del_tunnel',
                           is_add=1,
                           is_ipv6=is_ipv6,
-                          tunnel_type=self.TUNNEL_TYPE_ERPSAN,
+                          tunnel_type=vpp_const.TUNNEL_TYPE_ERPSAN,
                           instance=0xffffffff,
                           src_address=src_addr,
                           dst_address=dst_addr,
@@ -1852,7 +1779,7 @@ class VPPInterface(object):
         self.call_vpp('gre_add_del_tunnel',
                       is_add=0,
                       is_ipv6=is_ipv6,
-                      tunnel_type=self.TUNNEL_TYPE_ERPSAN,
+                      tunnel_type=vpp_const.TUNNEL_TYPE_ERPSAN,
                       instance=0xffffffff,
                       src_address=src_addr,
                       dst_address=dst_addr,
