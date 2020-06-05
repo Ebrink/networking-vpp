@@ -605,23 +605,35 @@ we will be increasing the coverage of the unit tests, as well as
 enhancing the types of system/integration tests that we run, e.g.
 negative testing, compatibility testing, etc.
 
-What's new in the 20.01 release?
+What's new in the 20.05 release?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the 20.01 release, we've made the below changes:
+In the 20.05 release, we've made the below changes:
 
-- We've dropped support for Python 2.7 and updated the code to work with
-  Python 3.6 or later releases.
+- We've added a class that defines network type APIs and implements them.
+  The network types supported are VLAN, Flat and GPE. Our intent is to add
+  support for pluggable network types without the need to modify code.
+  We'll be continuing our work to enhance this work in the next release.
 
-- We've updated the code to be compatible with VPP 20.01 API changes.
+- We've updated the code to be compatible with VPP 20.05 API changes.
 
-- We've added VPP API versioning support using 2 data files. They are
-  API whitelist file and API CRC manifest file. At startup, the vpp-agent
-  will check to see if the API signature is compatible with the installed VPP.
-  Also, at runtime, only the whitelisted API calls will be allowed.
+- We've added code to deal with poorly formed security group subnets.
+  For instance, 1.2.3.4/0 is completely acceptable in a security group rule.
+  Previously, VPP accepted this in its API calls but this is not currently
+  the case. We've fixed this up at the high level to be acceptable to VPP.
 
-- We've fixed an issue with the eventlet that caused problems when binding
-  tap interfaces into Linux bridge.
+- We've fixed an issue with missing package_data required for VPP API
+  message validation.
+
+- We've dropped the VPP 19.04 compatibility code.
+
+- We've fixed an issue with the security group mechdriver code in which
+  a SG rule is added but not pushed out to VPP until the next rule is added
+  or the security group is changed.
+
+- We've moved VPP specific constants to a dedicated vpp_constants.py file.
+
+- Due to a VPP issue, GPE support will be deferred to the 20.05.1 release.
 
 - We've been doing the usual round of bug fixes, clean-ups and updates - the
-  code will work with VPP 20.01 and the OpenStack Stein release.
+  code will work with VPP 20.05, the OpenStack Stein release & Python 3.
