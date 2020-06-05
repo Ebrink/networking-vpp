@@ -47,6 +47,7 @@ import sys
 import time
 
 from networking_vpp.agent import gpe
+from networking_vpp.agent import network_interface
 from networking_vpp.agent import vpp
 from networking_vpp import compat
 from networking_vpp.compat import n_const
@@ -353,6 +354,7 @@ class VPPForwarder(object):
         self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len, read_timeout,
                                     lock_type=real_thread_lock)
 
+        self.net_driver = network_interface.NetworkInterfaceDriver(self)
         self.physnets = physnets
 
         self.mac_age = mac_age
@@ -376,7 +378,6 @@ class VPPForwarder(object):
         else:
             self.gpe = None
 
-        self.networks = {}      # (physnet, type, ID): datastruct
         self.interfaces = {}    # uuid: if idx
         self.router_interfaces = {}  # router_port_uuid: {}
         self.router_external_interfaces = {}  # router external interfaces
@@ -624,132 +625,6 @@ class VPPForwarder(object):
             return None, None
         self.vpp.set_interface_tag(ifidx, physnet_if_tag(physnet))
         return ifname, ifidx
-
-    def ensure_network_on_host(self, physnet, net_type, seg_id):
-        """Find or create a network of the type required
-
-        This assumes we are in sync and that therefore we know if
-        this has already been done.
-        """
-
-        # On resync, we will be recreating our datastructure.
-        # On general activity we skip to the chase.
-        if (physnet, net_type, seg_id) not in self.networks:
-            net = self.ensure_network_in_vpp(physnet, net_type, seg_id)
-            if net:
-                self.networks[(physnet, net_type, seg_id)] = net
-
-        return self.networks.get((physnet, net_type, seg_id), None)
-
-    def ensure_network_in_vpp(self, physnet, net_type, seg_id):
-        """Create a bridge referring to a network in VPP
-
-        Returns information about the objects we set up in VPP.
-        This will use anything it finds that looks like it
-        relates to this network, so is idempotent.
-        """
-
-        intf, ifidx = self.get_if_for_physnet(physnet)
-        if intf is None:
-            LOG.error('Cannot create network because physnet'
-                      '%s config is broken', physnet)
-            return None
-
-        # TODO(ijw): bridge domains have no distinguishing marks.
-        # VPP needs to allow us to name or label them so that we
-        # can find them when we restart.  If we add an interface
-        # to two bridges that will likely not do as required
-
-        if net_type == 'flat':
-            if_uplink = ifidx
-
-            LOG.debug('Adding uplink interface-idx:%s-%s to bridge '
-                      'for flat networking', intf, if_uplink)
-            bridge_idx = if_uplink
-            self.ensure_interface_in_vpp_bridge(bridge_idx, if_uplink)
-
-            # This interface has a physnet tag already.  Don't overwrite.
-
-        elif net_type == 'vlan':
-            LOG.debug('Adding uplink interface %s vlan %s '
-                      'to bridge for vlan networking', intf, seg_id)
-            # Besides the vlan sub-interface we need to also bring
-            # up the primary uplink interface for Vlan networking
-            self.vpp.ifup(ifidx)
-            if_uplink = self.vpp.get_vlan_subif(intf, seg_id)
-            if if_uplink is None:
-                if_uplink = self.vpp.create_vlan_subif(ifidx, seg_id)
-            # Our bridge IDs have one uplink interface in so we simply use
-            # that ID as their domain ID
-            # This means we can find them on resync from the tagged interface
-            bridge_idx = if_uplink
-            self.ensure_interface_in_vpp_bridge(bridge_idx, if_uplink)
-
-            self.vpp.set_interface_tag(if_uplink,
-                                       uplink_tag(physnet, net_type, seg_id))
-
-            self.vpp.ifup(if_uplink)
-
-        elif net_type == TYPE_GPE and self.gpe is not None:
-            # GPE bridges have no uplink interface at all.
-            # We link the bridge directly to the GPE code.
-
-            self.gpe.ensure_gpe_link()
-            bridge_idx = self.gpe.bridge_idx_for_segment(seg_id)
-            self.ensure_bridge_domain_in_vpp(bridge_idx)
-            self.gpe.ensure_gpe_vni_to_bridge_mapping(seg_id, bridge_idx)
-
-            # We attach the bridge to GPE without use of an uplink interface
-            # as we affect forwarding in the bridge.
-            if_uplink = None
-
-        else:
-            raise Exception(_('network type %s not supported'), net_type)
-
-        rv = {
-            'physnet': physnet,
-            'if_physnet': intf,
-            'bridge_domain_id': bridge_idx,
-            'network_type': net_type,
-            'segmentation_id': seg_id,
-        }
-
-        if if_uplink is not None:
-            self.vpp.ifup(if_uplink)
-            rv['if_uplink_idx'] = if_uplink
-
-        return rv
-
-    def delete_network_on_host(self, physnet, net_type, seg_id=None):
-        net = self.networks.get((physnet, net_type, seg_id,), None)
-        if net is not None:
-            bridge_domain_id = net['bridge_domain_id']
-            uplink_if_idx = net.get('if_uplink_idx', None)
-
-            if net['network_type'] == TYPE_GPE and self.gpe is not None:
-                # TODO(ijw): this needs reconsidering for resync
-                # network cleanup cases - it won't be called if it
-                # lives here - but for now, these rely on local
-                # caches of GPE data we programmed.
-
-                LOG.debug("Deleting vni %s from GPE map", seg_id)
-                self.gpe.delete_vni_from_gpe_map(seg_id)
-                # Delete all remote mappings corresponding to this VNI
-                self.gpe.clear_remote_gpe_mappings(seg_id)
-                # Delete VNI to bridge domain mapping
-                self.gpe.delete_gpe_vni_to_bridge_mapping(seg_id,
-                                                          bridge_domain_id
-                                                          )
-
-            self.delete_network_bridge_on_host(net_type, bridge_domain_id,
-                                               uplink_if_idx)
-
-            # We may not know of this network (if we're dealing with
-            # resync on restart, for instance); delete a record
-            # if one exists.
-            self.networks.pop((physnet, net_type, seg_id,))
-        else:
-            LOG.warning("Delete Network: network is unknown to agent")
 
     def delete_network_bridge_on_host(self, net_type, bridge_domain_id,
                                       uplink_if_idx):
@@ -1058,7 +933,7 @@ class VPPForwarder(object):
         # may have been done before; the functions we call correct
         # any previous state they find.
 
-        net_data = self.ensure_network_on_host(physnet, net_type, seg_id)
+        net_data = self.net_driver.ensure_network(physnet, net_type, seg_id)
         if net_data is None:
             LOG.error('port bind is not possible as physnet '
                       'could not be configured')
@@ -1116,9 +991,9 @@ class VPPForwarder(object):
                         break
                 else:
                     # Network is not used on this host, delete it
-                    self.delete_network_on_host(net['physnet'],
-                                                net['network_type'],
-                                                net['segmentation_id'])
+                    self.net_driver.delete_network(net['physnet'],
+                                                   net['network_type'],
+                                                   net['segmentation_id'])
 
     def bind_subport_on_host(self, parent_port, subport_data):
         """Bind the subport of a bound parent vhostuser port."""
@@ -1138,9 +1013,9 @@ class VPPForwarder(object):
                   physnet, uplink_seg_type, uplink_seg_id)
         # Ensure an uplink for the subport
         # Use the uplink physnet, uplink_seg_id & seg_type
-        net_data = self.ensure_network_on_host(physnet,
-                                               uplink_seg_type,
-                                               uplink_seg_id)
+        net_data = self.net_driver.ensure_network(physnet,
+                                                  uplink_seg_type,
+                                                  uplink_seg_id)
         if net_data is None:
             LOG.error('trunk sub-port binding is not possible as the '
                       'physnet could not be configured for subport')
@@ -1792,12 +1667,12 @@ class VPPForwarder(object):
         """
 
         # Get internal network details.
-        internal_network_data = self.ensure_network_on_host(
+        internal_network_data = self.net_driver.ensure_network(
             floatingip_dict['internal_physnet'],
             floatingip_dict['internal_net_type'],
             floatingip_dict['internal_segmentation_id'])
         # Get the external network details
-        external_network_data = self.ensure_network_on_host(
+        external_network_data = self.net_driver.ensure_network(
             floatingip_dict['external_physnet'],
             floatingip_dict['external_net_type'],
             floatingip_dict['external_segmentation_id'])
@@ -1817,14 +1692,14 @@ class VPPForwarder(object):
         external_physnet = floatingip_dict['external_physnet']
         external_net_type = floatingip_dict['external_net_type']
         external_segmentation_id = floatingip_dict['external_segmentation_id']
-        external_network_data = self.networks.get(
+        external_network_data = self.net_driver.get_network(
             (external_physnet, external_net_type, external_segmentation_id),
             None)
         if external_network_data:
             physnet_ip_addrs = self.vpp.get_interface_ip_addresses(
                 external_network_data['if_uplink_idx'])
             if not physnet_ip_addrs:
-                self.delete_network_on_host(
+                self.net_driver.delete_network(
                     external_physnet, external_net_type,
                     external_segmentation_id)
 
@@ -1899,7 +1774,7 @@ class VPPForwarder(object):
             prefixlen = router_data['prefixlen']
             is_ipv6 = router_data['is_ipv6']
         # Ensure the network exists on host and get the network data
-        net_data = self.ensure_network_on_host(physnet, net_type, seg_id)
+        net_data = self.net_driver.ensure_network(physnet, net_type, seg_id)
         # Get the bridge domain id and ensure a BVI interface for it
         bridge_idx = net_data['bridge_domain_id']
         # Ensure a BVI (i.e. A loopback) for the bridge domain
