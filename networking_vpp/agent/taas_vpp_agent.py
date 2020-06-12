@@ -15,6 +15,7 @@
 
 import etcd
 from ipaddress import ip_address
+from ipaddress import ip_interface
 from ipaddress import ip_network
 from networking_vpp.constants import LEADIN
 from networking_vpp import etcdutils
@@ -110,9 +111,10 @@ class TaasServiceAgentWatcher(etcdutils.EtcdChangeWatcher):
                 }
 
             else:
-                bridge_data = self.vppf.ensure_network_on_host(physnet,
-                                                               network_type,
-                                                               data['taas_id'])
+                bridge_data = self.vppf.net_driver.ensure_network(
+                    physnet,
+                    network_type,
+                    data['taas_id'])
 
             # Since we want all packets regardless of MAC to go to the other
             # end, we want the bridge to flood
@@ -173,7 +175,7 @@ class TaasServiceAgentWatcher(etcdutils.EtcdChangeWatcher):
                 bd_idx = tap_service_info['service_bridge']['bridge_domain_id']
                 self.vppf.vpp.delete_bridge_domain(bd_idx)
             else:
-                self.vppf.delete_network_on_host(physnet, net_type, seg_id)
+                self.vppf.net_driver.delete_network(physnet, net_type, seg_id)
 
             self.etcd_client.delete(taas_path)
         except etcd.EtcdKeyNotFound:
@@ -266,29 +268,28 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
     def _create_vxlan_tunnel(self, dst_adr, vni):
         """Create a tunnel to a remote destination VTEP."""
-        dst_adr = self.vppf._pack_address(dst_adr)
         # TODO(ijw) this reads all VXLAN tunnels from VPP every time
         # and as such is not amazingly efficient.
         vxtuns = self.vppf.vpp.get_vxlan_tunnels()
-        tidx = vxtuns.get((vni, dst_adr,))
+        tidx = vxtuns.get((vni, ipaddr(dst_adr),))
         if tidx is not None:
             return tidx
 
-        self.vppf.ensure_gpe_link()
-        src_adr = self.vppf.gpe_underlay_addr
+        self.vppf.gpe.ensure_gpe_link()
+        src_adr = self.vppf.gpe.gpe_underlay_addr
         idx = self.vppf.vpp.create_vxlan_tunnel(
-            self.vppf._pack_address(src_adr),
-            self.vppf._pack_address(dst_adr),
+            src_adr,
+            dst_adr,
             vni)
         return idx
 
     def _delete_vxlan_tunnel(self, dst_adr, vni):
         """Remove a VXLAN tunnel from VPP."""
-        self.vppf.ensure_gpe_link()
-        src_adr = self.vppf.gpe_underlay_addr
+        self.vppf.gpe.ensure_gpe_link()
+        src_adr = self.vppf.gpe.gpe_underlay_addr
         self.vppf.vpp.delete_vxlan_tunnel(
-            self.vppf._pack_address(src_adr),
-            self.vppf._pack_address(dst_adr),
+            src_adr,
+            dst_adr,
             vni)
 
     def _create_erspan_tunnel(self, src_adr, dst_adr, session_id):
@@ -306,20 +307,14 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                       ' of src_adr and dst_adr are different',
                       self.src_adr, self.dst_adr)
             return None
-        dst_adrp = self.vppf._pack_address(dst_adr)
-        src_adrp = self.vppf._pack_address(src_adr)
         esptuns = self.vppf.vpp.get_erspan_tunnels()
-        if is_ipv6 == 0:
-            kadr = dst_adrp + "\x00" * 12
-        else:
-            kadr = dst_adrp
-        tidx = esptuns.get((int(session_id), kadr))
+        tidx = esptuns.get((int(session_id), ipaddr(dst_adr)))
         if tidx is not None:
             return tidx
 
         idx = self.vppf.vpp.create_erspan_tunnel(
-            src_adrp,
-            dst_adrp,
+            src_adr,
+            dst_adr,
             is_ipv6,
             int(session_id))
         return idx
@@ -331,8 +326,8 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         else:
             is_ipv6 = 0
         self.vppf.vpp.delete_erspan_tunnel(
-            self.vppf._pack_address(src_adr),
-            self.vppf._pack_address(dst_adr),
+            src_adr,
+            dst_adr,
             is_ipv6,
             int(session_id))
 
@@ -363,7 +358,6 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         """New TAP flow created."""
         flow_id = key
         data = jsonutils.loads(value)
-        # data = value
 
         # Check Span direction
         direction = data['tap_flow']['direction']
@@ -401,7 +395,6 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                     esp_dst_addr = ts_info['tap_service']['erspan_dst_ip']
                 network_type = 'vlan'
                 esp_src_addr = self.esp_src_addr
-                # esp_dst_addr = ts_info['tap_service']['erspan_dst_ip']
                 esp_session_id = data['tap_flow']['erspan_session_id']
                 esp_plen = self.esp_plen
                 if ip_network(six.text_type(esp_dst_addr)).version == 6:
@@ -427,7 +420,7 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                     loop_idx = -1
                 elif dest_type == 'ERSPAN_INT':
                     # Create or find the TF bridge
-                    bridge_data = self.vppf.ensure_network_on_host(
+                    bridge_data = self.vppf.net_driver.ensure_network(
                         physnet,
                         network_type,
                         data['taas_id'])
@@ -447,11 +440,13 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                         self.vppf.vpp.set_interface_vrf(loop_idx, 0, esp_isv6)
                         self.vppf.vpp.set_interface_ip(
                             loop_idx,
-                            self.vppf._pack_address(esp_src_addr),
-                            int(esp_plen),
-                            esp_isv6)
+                            esp_src_addr,
+                            int(esp_plen))
+                        esp_inet = ip_interface(
+                            '%s/%s' % (esp_dst_addr, esp_plen))
+                        esp_net = ("%s" % (esp_inet.network)).split('/')[0]
                         self.vppf.vpp.add_ip_route(
-                            0, self.vppf._pack_address(esp_dst_addr),
+                            0, self.vppf._pack_address(esp_net),
                             int(esp_plen), None, loop_idx, esp_isv6, False)
                         self.vppf.vpp.ifup(loop_idx)
 
@@ -518,7 +513,7 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
                         # get/create a numbered bridge domain for the service
 
-                        service_bridge = self.vppf.ensure_network_on_host(
+                        service_bridge = self.vppf.net_driver.ensure_network(
                             physnet, network_type, taas_id)
                         service_bridge_id = service_bridge['bridge_domain_id']
                         self.vppf.vpp.bridge_enable_flooding(service_bridge_id)
@@ -618,7 +613,7 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                                 physnet = tap_flow_info['physnet']
                                 net_type = 'vlan'
                                 seg_id = taas_id
-                                self.vppf.delete_network_on_host(
+                                self.vppf.net_driver.delete_network(
                                     physnet, net_type, seg_id)
             else:
                 tfn = tap_flow_info['tfn']
@@ -641,7 +636,7 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                         if sp.sw_if_index_to == dst_idx:
                             cnt += 1
                     if cnt == 0:
-                        self.vppf.delete_network_on_host(
+                        self.vppf.net_driver.delete_network(
                             physnet, net_type, seg_id)
 
                 elif span_mode == 2:  # vxlan

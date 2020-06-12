@@ -93,7 +93,11 @@ _vpp_opts = [
     cfg.StrOpt('vpp_agent_extensions', default='',
                help=_("Enabled extensions for the VPP agent")),
     cfg.StrOpt('driver_extensions', default='',
-               help=_("Enabled extensions for the mechanism driver"))
+               help=_("Enabled extensions for the mechanism driver")),
+    cfg.StrOpt('esp_src_cidr', default=None,
+               help=_("The source_IP/prefix_len used for ERSPAN")),
+    cfg.StrOpt('esp_physnet', default=None,
+               help=_("The physical network used for ERSPAN"))
 ]
 
 cfg_group = cfg.OptGroup(name='ml2_vpp',
