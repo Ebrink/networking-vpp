@@ -1131,8 +1131,8 @@ class VPPForwarder(object):
 
             class FailableBridgeDevice(bridge_lib.BridgeDevice):
                 # For us, we expect failing commands and want them ignored.
-                def _brctl(self, cmd):
-                    cmd = ['brctl'] + cmd
+                def _ip_link(self, cmd):
+                    cmd = ['ip', 'link'] + cmd
                     ip_wrapper = ip_lib.IPWrapper(self.namespace)
                     return ip_wrapper.netns.execute(
                         cmd,
