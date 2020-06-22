@@ -20,8 +20,9 @@ from networking_vpp import constants as nvpp_const
 from oslo_config import cfg
 from oslo_log import log as logging
 
-from neutron.db import common_db_mixin
 from neutron.db import l3_gwmode_db
+from neutron_lib.db import model_query
+from neutron_lib.services import base as service_base
 
 from networking_vpp.compat import db_context_reader
 from networking_vpp.compat import db_context_writer
@@ -57,7 +58,7 @@ def kick_communicator_on_end(func):
     return new_func
 
 
-class VppL3RouterPlugin(common_db_mixin.CommonDbMixin,
+class VppL3RouterPlugin(service_base.ServicePluginBase,
                         l3_gwmode_db.L3_NAT_dbonly_mixin):
     """Implementation of the VPP L3 Router Service Plugin.
 
@@ -121,7 +122,7 @@ class VppL3RouterPlugin(common_db_mixin.CommonDbMixin,
     @db_context_reader
     def _get_vpp_router(self, context, router_id):
         try:
-            router = self._get_by_id(context, Router, router_id)
+            router = model_query.get_by_id(context, Router, router_id)
         except Exception:
             raise n_exc.BadRequest("L3 Router not found for router_id: %s",
                                    router_id)

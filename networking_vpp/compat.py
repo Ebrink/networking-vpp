@@ -116,6 +116,24 @@ except ImportError:
     db_context_writer = neutron_db_api.CONTEXT_WRITER
     db_context_reader = neutron_db_api.CONTEXT_READER
 
+# Neutron changes in Train
+try:
+    # Stein and before
+    from neutron.services.trunk import constants
+    trunk_const = constants
+except ImportError:
+    # Map changed trunk constants in Train
+    from neutron_lib.services.trunk import constants
+    class new_trunk_const(object):
+        VLAN = constants.SEGMENTATION_TYPE_VLAN
+        TRUNK = 'trunk'
+        TRUNK_PLUGIN = 'trunk_plugin'
+        DOWN_STATUS = constants.TRUNK_DOWN_STATUS
+        ACTIVE_STATUS = constants.TRUNK_ACTIVE_STATUS
+        ERROR_STATUS = constants.TRUNK_ERROR_STATUS
+        SUBPORTS = 'subports'
+    trunk_const = new_trunk_const
+
 try:
     # Newton
     n_const.L3
