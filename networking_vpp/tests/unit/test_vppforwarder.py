@@ -21,6 +21,7 @@ import uuid as uuidgen
 sys.modules['vpp_papi'] = mock.MagicMock()
 sys.modules['vpp'] = mock.MagicMock()
 from ipaddress import ip_address
+from ipaddress import IPv4Address
 from networking_vpp.agent import gpe
 from networking_vpp.agent import server
 from networking_vpp import compat
@@ -1044,7 +1045,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             self.vpp.vpp.\
                 add_lisp_arp_entry.assert_called_once_with(
                     'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                    int(ip_address(six.text_type('10.1.1.2'))))
+                    IPv4Address('10.1.1.2'))
 
     @mock.patch('networking_vpp.agent.gpe.GpeListener')
     @mock.patch('networking_vpp.agent.server.EtcdListener')
@@ -1126,7 +1127,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.\
             replace_lisp_arp_entry.assert_called_once_with(
                 'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                int(ip_address(six.text_type('10.1.1.2'))))
+                IPv4Address('10.1.1.2'))
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.acl_add_replace_on_host')

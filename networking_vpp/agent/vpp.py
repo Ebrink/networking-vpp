@@ -1467,7 +1467,7 @@ class VPPInterface(object):
         self.call_vpp('lisp_add_del_remote_mapping',
                       is_add=True,
                       vni=vni,
-                      eid=eid,
+                      deid=eid,
                       rlocs=[underlay],
                       rloc_num=1,
                       is_src_dst=False)
@@ -1486,7 +1486,7 @@ class VPPInterface(object):
         self.call_vpp('lisp_add_del_remote_mapping',
                       is_add=False,
                       vni=vni,
-                      eid=eid,
+                      deid=eid,
                       rlocs=[],
                       rloc_num=0,
                       is_src_dst=False)
@@ -1596,7 +1596,7 @@ class VPPInterface(object):
                               if arp.ip4 == ipv4_address]:
             # Note(onong): In 20.05, mac and ip4 have been combined to a new
             # type, namely, vl_api_one_l2_arp_entry_t
-            arp_entry = {"mac": mac_to_bytes(mac_addr), "ip4": ip4}
+            arp_entry = {"mac": mac_addr.mac_binary, "ip4": ip4}
             self.call_vpp('one_add_del_l2_arp_entry',
                           is_add=False, entry=arp_entry, bd=bridge_domain)
         # Add the new ARP entry
@@ -1614,7 +1614,7 @@ class VPPInterface(object):
                               if ndp_entry.ip6 == ipv6_address]:
             # Note(onong): In 20.05, mac and ip6 have been combined to a new
             # type, namely, vl_api_one_ndp_entry_t
-            ndp_entry = {"mac": mac_to_bytes(mac_addr), "ip6": ip6}
+            ndp_entry = {"mac": mac_addr.mac_binary, "ip6": ip6}
             self.call_vpp('one_add_del_ndp_entry',
                           is_add=0, entry=ndp_entry, bd=bridge_domain)
         # Add the new v6 NDP entry
@@ -1702,7 +1702,8 @@ class VPPInterface(object):
                           ls_index=locator_index,
                           is_index_set=1)
         for locator in t:
-            return bytes_to_ip(locator.ip_address, locator.is_ipv6)
+            ip = ipaddress.ip_address(locator.ip_address)
+            return ip.exploded
 
     def get_lisp_eid_table(self):
         """Query the LISP EID table within VPP and return its contents.
