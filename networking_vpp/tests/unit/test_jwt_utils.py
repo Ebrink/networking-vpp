@@ -14,7 +14,7 @@
 #    under the License.
 
 from collections import namedtuple
-import mock
+from unittest import mock
 
 from networking_vpp import jwt_agent
 from neutron.tests import base
