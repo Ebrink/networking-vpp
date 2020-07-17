@@ -14,112 +14,38 @@
 #    under the License.
 
 # Defines network types and network interface APIs
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from networking_vpp.agent import server
-from networking_vpp.extension import VPPAgentExtensionBase
+from networking_vpp.agent import vpp
 from oslo_config import cfg
 from oslo_log import log as logging
 import stevedore.driver
 import sys
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 LOG = logging.getLogger(__name__)
 
 
 # TODO(ijw): is this an agent extension?  Unclear, but it would be
 # nice if it worked out the dependency needs since other extensions
-# might depend on it
-class NetworkTypeBase(VPPAgentExtensionBase):
-    """An abstract base class for creating network types.
-
-    Any network type supported by the vpp-agent must be subclassed from
-    this abstract base class. The vpp-agent will load all the network types
-    by instantiating the NetworkInterfaceDriver class.
-
-    When the network types are loaded and initialized, they will hook
-    themselves into the NetworkInterfaceDriver class.
-    """
-
-    @abstractmethod
-    def ensure_network(self, physnet, net_type, segmentation_id):
-        """Ensures the specified network type in VPP.
-
-        Params:
-            physnet: Physical network name (string)
-            net_type: Network type (flat, vlan or gpe)
-            segmentation_id: Virtual Network Identifier (integer)
-
-        Returns:
-            Network Data:
-            {
-                'physnet': physnet,
-                'if_physnet': physical_interface_name,
-                'bridge_domain_id': bridge_idx,
-                'network_type': net_type,
-                'segmentation_id': segmentation_id,
-                'if_uplink_idx': if_uplink
-            }
-        """
-        pass
-
-    @abstractmethod
-    def delete_network(self, physnet, net_type, segmentation_id):
-        """Deletes the specified network type from VPP.
-
-        Params:
-            physnet: Physical network name (string)
-            net_type: Network type (flat, vlan or gpe)
-            segmentation_id: Virtual Network Identifier (integer)
-
-        Returns:
-            None
-        """
-        pass
-
-    @abstractmethod
-    def get_network(self, physnet, net_type, segmentation_id):
-        """Gets the network data.
-
-        Params:
-            physnet: Physical network name (string)
-            net_type: Network type (flat, vlan or gpe)
-            segmentation_id: Virtual Network Identifier (integer)
-
-        Returns:
-            Network Data or None, if the network is not present
-            {
-                'physnet': physnet,
-                'if_physnet': physical_interface_name,
-                'bridge_domain_id': bridge_idx,
-                'network_type': net_type,
-                'segmentation_id': segmentation_id,
-                'if_uplink_idx': if_uplink
-            }
-        """
-        pass
-
-    def initialize(self, manager):
-        pass
-
-    def run(self, host, client_factory, vpp_forwarder, gthread_pool):
-        pass
-
-
-class GenericNetworkType(NetworkTypeBase):
-    """This type provides common type-driver logic to all network types.
+# might depend on it.  However, it doesn't have the threading
+# behaviour that is also included with agent extensions.
+class NetworkDriver(ABC):
+    """Network drivers implement this interface.
 
     Concrete Network Types inherit from this type and implement its two
     abstract methods: create_network_in_vpp() & remove_network_from_vpp()
     """
 
-    def __init__(self, net_type, vppf, vpp):
+    def __init__(self,
+                 net_type: str,
+                 vppf,
+                 vpp: vpp.VPPInterface):
         self.net_type = net_type
         self.vppf = vppf
         self.vpp = vpp
 
-        self.networks = {}       # (physnet, type, ID): datastruct
-
-    def get_if_for_physnet(self, physnet):
+    def get_if_for_physnet(self, physnet: str) -> Tuple[str, int]:
         intf, ifidx = self.vppf.get_if_for_physnet(physnet)
         if intf is None:
             LOG.error('Cannot create network because physnet '
@@ -127,7 +53,7 @@ class GenericNetworkType(NetworkTypeBase):
             sys.exit(1)
         return (intf, ifidx)
 
-    def delete_network_bridge(self, net):
+    def delete_network_bridge(self, net: dict):
         """Delete a bridge corresponding to a network from VPP.
 
         params:
@@ -149,48 +75,9 @@ class GenericNetworkType(NetworkTypeBase):
                                                 bridge_domain_id,
                                                 uplink_if_idx)
 
-    def ensure_network(self, physnet, net_type, segmentation_id):
-        LOG.debug('%s net-driver ensuring network for Physnet:%s '
-                  'Net-Type:%s, Segmentation_ID:%s',
-                  net_type, physnet, net_type, segmentation_id)
-        if (physnet, net_type, segmentation_id) not in self.networks:
-            if_physnet, if_uplink, bridge_idx = self.create_network_in_vpp(
-                physnet, net_type, segmentation_id)
-            net = {
-                'physnet': physnet,
-                'if_physnet': if_physnet,
-                'bridge_domain_id': bridge_idx,
-                'network_type': net_type,
-                'segmentation_id': segmentation_id,
-                'if_uplink_idx': if_uplink
-                }
-            self.networks[(physnet, net_type, segmentation_id)] = net
-        return self.networks.get((physnet, net_type, segmentation_id), None)
-
-    def delete_network(self, physnet, net_type, segmentation_id):
-        net = self.get_network(physnet, net_type, segmentation_id)
-        if net is not None:
-            LOG.debug('%s net-driver: deleting network: %s', net_type, net)
-            self.remove_network_from_vpp(net)
-            self.networks.pop((physnet,
-                               net_type,
-                               segmentation_id,))
-
-    def get_network(self, physnet, net_type, segmentation_id):
-        return self.networks.get((physnet, net_type, segmentation_id), None)
-
-    def initialize(self, manager):
-        """Initialization from the VPP Agent Extension Manager.
-
-        When the driver extension is enabled in the ml2_conf.ini, this
-        method hooks the network-type into the network interface driver class,
-        enabling the network types to be dynamically loaded into the
-        Network Interface Driver.
-        """
-        self.hook_to_driver()
-
     @abstractmethod
-    def create_network_in_vpp(self, physnet, net_type, segmentation_id):
+    def create_network_in_vpp(self, physnet: str, net_type: str,
+                              segmentation_id: int):
         """Creates the network in VPP.
 
         Network type drivers subclass this class and implement this
@@ -203,7 +90,7 @@ class GenericNetworkType(NetworkTypeBase):
         pass
 
     @abstractmethod
-    def remove_network_from_vpp(self, net):
+    def remove_network_from_vpp(self, net: dict):
         """Remove a provisioned network from VPP.
 
         Network type drivers subclass this class and implement this
@@ -222,9 +109,10 @@ class GenericNetworkType(NetworkTypeBase):
         pass
 
 
-class VlanNetworkType(GenericNetworkType):
+class VlanNetworkType(NetworkDriver):
 
-    def create_network_in_vpp(self, physnet, net_type, segmentation_id):
+    def create_network_in_vpp(self, physnet: str, net_type: str,
+                              segmentation_id: int):
         intf, ifidx = self.get_if_for_physnet(physnet)
         self.vpp.ifup(ifidx)
         if_uplink = self.vpp.get_vlan_subif(intf, segmentation_id)
@@ -240,26 +128,28 @@ class VlanNetworkType(GenericNetworkType):
         self.vpp.ifup(if_uplink)
         return (intf, if_uplink, bridge_idx)
 
-    def remove_network_from_vpp(self, net):
+    def remove_network_from_vpp(self, net: dict):
         self.delete_network_bridge(net)
 
 
-class FlatNetworkType(GenericNetworkType):
+class FlatNetworkType(NetworkDriver):
 
-    def create_network_in_vpp(self, physnet, net_type, segmentation_id):
+    def create_network_in_vpp(self, physnet: str, net_type: str,
+                              segmentation_id: int):
         intf, ifidx = self.get_if_for_physnet(physnet)
         if_uplink = bridge_idx = ifidx
         self.vppf.ensure_interface_in_vpp_bridge(bridge_idx, if_uplink)
         self.vpp.ifup(if_uplink)
         return (intf, if_uplink, bridge_idx)
 
-    def remove_network_from_vpp(self, net):
+    def remove_network_from_vpp(self, net: dict):
         self.delete_network_bridge(net)
 
 
-class GpeNetworkType(GenericNetworkType):
+class GpeNetworkType(NetworkDriver):
 
-    def create_network_in_vpp(self, physnet, net_type, segmentation_id):
+    def create_network_in_vpp(self, physnet: str, net_type: str,
+                              segmentation_id: int):
         intf, ifidx = self.get_if_for_physnet(physnet)
         self.vpp.ifup(ifidx)
         self.vppf.gpe.ensure_gpe_link()
@@ -272,7 +162,7 @@ class GpeNetworkType(GenericNetworkType):
         if_uplink = None
         return (intf, if_uplink, bridge_idx)
 
-    def remove_network_from_vpp(self, net):
+    def remove_network_from_vpp(self, net: dict):
         bridge_domain_id = net['bridge_domain_id']
         segmentation_id = net['segmentation_id']
         self.vppf.gpe.delete_vni_from_gpe_map(segmentation_id)
@@ -289,7 +179,9 @@ class BadDriver(Exception):
     pass
 
 
-class NetworkInterfaceDriver(object):
+# TODO(ijw): move BD creation here when we can tag BDs
+# TODO(ijw): move interface tagging here
+class NetworkDriverManager(object):
     """A Driver that loads and manages all network types"""
 
     # Class Attributes VPPF and VPP are set on driver init
@@ -300,10 +192,13 @@ class NetworkInterfaceDriver(object):
 
         # dict is populated when net_types register with the driver
         # Network-Type: DriverObj
-        self.net_types: Dict[str, GenericNetworkType] = {}
+        self.net_types: Dict[str, NetworkDriver] = {}
 
         # Register network types with the Driver
         self.register_network_types()
+
+        # All the networks we know of
+        self.networks: Dict[Tuple[str, str, int], dict] = {}
 
     def register_network_types(self):
         """Registers all configured network types."""
@@ -335,7 +230,7 @@ class NetworkInterfaceDriver(object):
 
                 driver = mgr.driver
 
-                if not isinstance(driver, NetworkTypeBase):
+                if not isinstance(driver, NetworkDriver):
                     add_failure("Network driver %s does not implement the"
                                 " NetworkTypeBase API and cannot be loaded"
                                 % name)
@@ -353,28 +248,64 @@ class NetworkInterfaceDriver(object):
         if failure['msg'] != '':
             raise BadDriver(failure['msg'])
 
-    def ensure_network(self, physnet, net_type, segmentation_id):
-        # Ensures network for a network-type & returns network data
-        return self._get_driver(net_type).ensure_network(
-            physnet,
-            net_type,
-            segmentation_id)
+    def ensure_network(
+            self,
+            physnet: str, net_type: str, segmentation_id: int
+    ) -> dict:
+        """Ensures network components are in VPP.
 
-    def delete_network(self, physnet, net_type, segmentation_id):
-        # Deletes network for a network-type
-        self._get_driver(net_type).delete_network(
-            physnet,
-            net_type,
-            segmentation_id)
+        TODO meaning, what?
 
-    def get_network(self, physnet, net_type, segmentation_id):
-        # Gets the network data for a network-type
-        return self._get_driver(net_type).get_network(
-            physnet,
-            net_type,
-            segmentation_id)
+        :returns: network_data
+        """
+        LOG.debug('%s net-driver ensuring network for Physnet:%s '
+                  'Net-Type:%s, Segmentation_ID:%s',
+                  net_type, physnet, net_type, segmentation_id)
 
-    def _get_driver(self, net_type):
+        driver = self._get_driver(net_type)
+
+        net = self.get_network(physnet, net_type, segmentation_id)
+        if net is None:
+            if_physnet, if_uplink, bridge_idx = driver.create_network_in_vpp(
+                physnet, net_type, segmentation_id)
+            net = {
+                'physnet': physnet,
+                'network_type': net_type,
+                'segmentation_id': segmentation_id,
+
+                'if_physnet': if_physnet,
+                'bridge_domain_id': bridge_idx,
+                'if_uplink_idx': if_uplink
+                }
+            self.networks[(physnet, net_type, segmentation_id)] = net
+        return net
+
+    def delete_network(self,
+                       physnet: str,
+                       net_type: str,
+                       segmentation_id: int):
+        """Ensures network components are not in VPP.
+
+        TODO meaning: what?
+        """
+        driver = self._get_driver(net_type)
+
+        net = self.get_network(physnet, net_type, segmentation_id)
+        if net is not None:
+            LOG.debug('%s net-driver: deleting network: %s', net_type, net)
+            driver.remove_network_from_vpp(net)
+            self.networks.pop((physnet,
+                               net_type,
+                               segmentation_id,))
+        else:
+            print("Deleting nonexistent network (%s)" % str(self.networks))
+
+    def get_network(
+            self, physnet: str, net_type: str, segmentation_id: int
+    ) -> Optional[dict]:
+        return self.networks.get((physnet, net_type, segmentation_id,))
+
+    def _get_driver(self, net_type: str):
         try:
             return self.net_types[net_type]
         except KeyError:

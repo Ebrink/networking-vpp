@@ -355,7 +355,7 @@ class VPPForwarder(object):
         self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len,
                                     lock_type=real_thread_lock)
 
-        self.net_driver = network_interface.NetworkInterfaceDriver(self)
+        self.net_driver = network_interface.NetworkDriverManager(self)
         self.physnets = physnets
 
         self.mac_age = mac_age
