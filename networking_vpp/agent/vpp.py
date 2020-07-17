@@ -36,6 +36,7 @@ from threading import Lock
 # typing is included purely for typechecks and pep8 objects to its inclusion
 from typing import List, Dict, Optional, Set, Tuple, Iterator  # noqa
 import vpp_papi  # type: ignore
+from vpp_papi import VppEnum
 
 
 def binary_type(s):
@@ -677,11 +678,17 @@ class VPPInterface(object):
 
     ########################################
 
-    def create_vlan_subif(self, if_id, vlan_tag):
-        # type: (int, int) -> int
-        t = self.call_vpp('create_vlan_subif',
+    def create_vlan_subif(self, if_id, vlan_tag, exact_match=0):
+        # type: (int, int, int) -> int
+        flags = VppEnum.vl_api_sub_if_flags_t.SUB_IF_API_FLAG_ONE_TAG
+        if exact_match:
+            flags |= VppEnum.vl_api_sub_if_flags_t.SUB_IF_API_FLAG_EXACT_MATCH
+
+        t = self.call_vpp('create_subif',
                           sw_if_index=if_id,
-                          vlan_id=vlan_tag)
+                          sub_id=vlan_tag,
+                          outer_vlan_id=vlan_tag,
+                          sub_if_flags=flags)
 
         # pop vlan tag from subinterface
         self.set_vlan_remove(t.sw_if_index)
