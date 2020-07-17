@@ -158,10 +158,10 @@ FILTER_REMOTE = 2
 #   SPAN_STATE_API_TX = 2,
 #   SPAN_STATE_API_RX_TX = 3,
 # };
-SPAN_DISABLED = 0,
-SPAN_RX = 1,
-SPAN_TX = 2,
-SPAN_RX_TX = 3,
+SPAN_DISABLED = 0
+SPAN_RX = 1
+SPAN_TX = 2
+SPAN_RX_TX = 3
 
 # GRE tunnel type as defined in ~vpp/src/vnet/gre/gre.api:
 # enum gre_tunnel_type : u8

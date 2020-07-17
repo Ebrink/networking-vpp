@@ -1835,7 +1835,8 @@ class VPPInterface(object):
         """
         t = self.call_vpp('gre_tunnel_dump', sw_if_index=0xffffffff)
         tuns = {}
-        for tun in t:
-            if tun.tunnel_type == vpp_const.TUNNEL_TYPE_ERSPAN:
-                tuns[(tun.session_id, tun.dst_address,)] = tun.sw_if_index
+        for tun0 in t:
+            tun = tun0.tunnel
+            if tun.type == vpp_const.TUNNEL_TYPE_ERSPAN:
+                tuns[(tun.session_id, tun.dst,)] = tun.sw_if_index
         return tuns
