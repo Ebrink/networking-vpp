@@ -23,11 +23,11 @@ from networking_vpp.compat import portbindings
 from networking_vpp.compat import registry
 from networking_vpp.compat import resource_extend
 from networking_vpp.compat import resources
+from networking_vpp.compat import trunk_const
 from networking_vpp import constants as nvpp_const
 from networking_vpp.db import db
 from networking_vpp.mech_vpp import JournalManager
 
-from neutron.db import common_db_mixin
 from neutron.db import db_base_plugin_common
 
 from neutron.objects import base as objects_base
@@ -41,9 +41,9 @@ except ImportError:
     from neutron.plugins.common import utils as plugin_utils
 
 from neutron.services.trunk import callbacks
-from neutron.services.trunk import constants as trunk_const
 from neutron.services.trunk import exceptions as trunk_exc
 from neutron.services.trunk import rules
+from neutron_lib.services import base as service_base
 
 from oslo_log import log as logging
 from oslo_utils import uuidutils
@@ -61,7 +61,7 @@ def kick_communicator_on_end(func):
 
 
 @resource_extend.has_resource_extenders
-class VppTrunkPlugin(common_db_mixin.CommonDbMixin):
+class VppTrunkPlugin(service_base.ServicePluginBase):
     """Implementation of the VPP Trunk Service Plugin.
 
     This class implements the trunk service plugin that provides
