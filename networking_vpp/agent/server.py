@@ -751,16 +751,22 @@ class VPPForwarder(object):
                 # VPP. During a regular port binding process, there are two
                 # code paths calling this function for adding the interface to
                 # the Linux Bridge, which may potentially cause a race
-                # condition and a non-harmful traceback in the log.
+                # condition and a non-harmful traceback in the log. Also, it
+                # is quite possible that a bridge may have been deleted by the
+                # normal port unbinding process before this code tries to add
+                # the tap interafce.
 
                 # The fix will eliminate the non-harmful traceback in the log.
-                match = re.search(r"Stderr\: device (vpp|tap)[0-9a-f]{8}-"
-                                  "[0-9a-f]{2} is already a member of a "
-                                  "bridge; can't enslave it to bridge br-"
-                                  r'[0-9a-f]{8}-[0-9a-f]{2}\.', ex.message)
-                if not match:
+                match1 = re.search(r"Stderr\: device (vpp|tap)[0-9a-f]{8}-"
+                                   "[0-9a-f]{2} is already a member of a "
+                                   "bridge; can't enslave it to bridge br-"
+                                   r'[0-9a-f]{8}-[0-9a-f]{2}\.', str(ex))
+                match2 = re.search(r"Stderr: Error: argument \"br-"
+                                   "[0-9a-f]{8}-[0-9a-f]{2}\" is wrong: "
+                                   "Device does not exist", str(ex))
+                if not match1 and not match2:
                     LOG.exception("Can't add interface %s to bridge %s: %s" %
-                                  (tap_name, bridge_name, ex.message))
+                                  (tap_name, bridge_name, str(ex)))
 
     def _ensure_kernelside_tap(self, bridge_name, tap_name, int_tap_name):
         # This is the kernel-side config (and we should not assume
