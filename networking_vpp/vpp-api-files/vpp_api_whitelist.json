@@ -64,5 +64,6 @@
 "vxlan_add_del_tunnel", "vxlan_add_del_tunnel_reply",
 "vxlan_tunnel_dump", "vxlan_tunnel_details",
 "gre_tunnel_add_del", "gre_tunnel_add_del_reply",
-"gre_tunnel_dump", "gre_tunnel_details"
+"gre_tunnel_dump", "gre_tunnel_details",
+"create_subif", "create_subif_reply"
 ]
