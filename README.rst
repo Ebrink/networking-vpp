@@ -605,35 +605,28 @@ we will be increasing the coverage of the unit tests, as well as
 enhancing the types of system/integration tests that we run, e.g.
 negative testing, compatibility testing, etc.
 
-What's new in the 20.05 release?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What's new in the 20.05.1 release?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the 20.05 release, we've made the below changes:
+In the 20.05.1 release,
 
-- We've added a class that defines network type APIs and implements them.
-  The network types supported are VLAN, Flat and GPE. Our intent is to add
-  support for pluggable network types without the need to modify code.
-  We'll be continuing our work to enhance this work in the next release.
+- We've added OpenStack Train release compatibility.
 
-- We've updated the code to be compatible with VPP 20.05 API changes.
+- We've optimized GPE VNI allocation in the Neutron DB. Instead of storing
+  the entire range of GPE VNIs, the GPE type-driver now dynamically
+  computes a valid VNI at network creation time and stores only the allocated
+  VNIs in Neutron DB.
 
-- We've added code to deal with poorly formed security group subnets.
-  For instance, 1.2.3.4/0 is completely acceptable in a security group rule.
-  Previously, VPP accepted this in its API calls but this is not currently
-  the case. We've fixed this up at the high level to be acceptable to VPP.
+- We've made corrections to GPE APIs. All of the GPE API changes could not
+  be tested for correctness in the previous release due to various issues.
+  We've added a patch that makes the necessary GPE API fixes.
 
-- We've fixed an issue with missing package_data required for VPP API
-  message validation.
+- We've changed the API to create sub-interfaces. The new API call "create_subif"
+  will keep the original behavior, but will add the support for Q-in-Q (i.e
+  inner & outer VLAN Tags).
 
-- We've dropped the VPP 19.04 compatibility code.
-
-- We've fixed an issue with the security group mechdriver code in which
-  a SG rule is added but not pushed out to VPP until the next rule is added
-  or the security group is changed.
-
-- We've moved VPP specific constants to a dedicated vpp_constants.py file.
-
-- Due to a VPP issue, GPE support will be deferred to the 20.05.1 release.
+- We've made TaaS fixes to support network type changes in the 20.05 release.
 
 - We've been doing the usual round of bug fixes, clean-ups and updates - the
-  code will work with VPP 20.05, the OpenStack Stein release & Python 3.
+  code will work with VPP 20.05/20.05.1 releases, the OpenStack Train/Stein
+  releases & Python 3.
