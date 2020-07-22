@@ -97,7 +97,9 @@ _vpp_opts = [
     cfg.StrOpt('esp_src_cidr', default=None,
                help=_("The source_IP/prefix_len used for ERSPAN")),
     cfg.StrOpt('esp_physnet', default=None,
-               help=_("The physical network used for ERSPAN"))
+               help=_("The physical network used for ERSPAN")),
+    cfg.StrOpt('network_types', default='vlan,gpe,flat',
+               help=_("Enabled network types (driver will be loaded)"))
 ]
 
 cfg_group = cfg.OptGroup(name='ml2_vpp',

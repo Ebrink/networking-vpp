@@ -14,19 +14,20 @@
 #    under the License.
 
 # Defines network types and network interface APIs
-from abc import ABCMeta
 from abc import abstractmethod
 from networking_vpp.agent import server
 from networking_vpp.extension import VPPAgentExtensionBase
+from oslo_config import cfg
 from oslo_log import log as logging
-import six
 import sys
+import stevedore.driver
 from typing import Dict
 
 LOG = logging.getLogger(__name__)
 
-
-@six.add_metaclass(ABCMeta)
+# TODO(ijw): is this an agent extension?  Unclear, but it would be
+# nice if it worked out the dependency needs since other extensions
+# might depend on it
 class NetworkTypeBase(VPPAgentExtensionBase):
     """An abstract base class for creating network types.
 
@@ -110,10 +111,11 @@ class GenericNetworkType(NetworkTypeBase):
     abstract methods: create_network_in_vpp() & remove_network_from_vpp()
     """
 
-    def __init__(self):
-        self.net_type = ''      # network types set this field upon init
-        # vppf & vpp attributes are set by hooking the network type into
-        # the network-interface driver class
+    def __init__(self, net_type, vppf, vpp):
+        self.net_type = net_type
+        self.vppf = vppf
+        self.vpp = vpp
+
         self.networks = {}       # (physnet, type, ID): datastruct
 
     def get_if_for_physnet(self, physnet):
@@ -176,15 +178,6 @@ class GenericNetworkType(NetworkTypeBase):
     def get_network(self, physnet, net_type, segmentation_id):
         return self.networks.get((physnet, net_type, segmentation_id), None)
 
-    def hook_to_driver(self):
-        """A hook into the Network Interface Driver.
-
-        This method hooks the network type into the network interface
-        driver class.
-        """
-        LOG.debug("Hooking %s network-type to the net-driver", self.net_type)
-        NetworkInterfaceDriver.register(self)
-
     def initialize(self, manager):
         """Initialization from the VPP Agent Extension Manager.
 
@@ -229,9 +222,6 @@ class GenericNetworkType(NetworkTypeBase):
 
 
 class VlanNetworkType(GenericNetworkType):
-    def __init__(self):
-        super(VlanNetworkType, self).__init__()
-        self.net_type = 'vlan'
 
     def create_network_in_vpp(self, physnet, net_type, segmentation_id):
         intf, ifidx = self.get_if_for_physnet(physnet)
@@ -254,9 +244,6 @@ class VlanNetworkType(GenericNetworkType):
 
 
 class FlatNetworkType(GenericNetworkType):
-    def __init__(self):
-        super(FlatNetworkType, self).__init__()
-        self.net_type = 'flat'
 
     def create_network_in_vpp(self, physnet, net_type, segmentation_id):
         intf, ifidx = self.get_if_for_physnet(physnet)
@@ -270,9 +257,6 @@ class FlatNetworkType(GenericNetworkType):
 
 
 class GpeNetworkType(GenericNetworkType):
-    def __init__(self):
-        super(GpeNetworkType, self).__init__()
-        self.net_type = 'gpe'
 
     def create_network_in_vpp(self, physnet, net_type, segmentation_id):
         intf, ifidx = self.get_if_for_physnet(physnet)
@@ -299,92 +283,104 @@ class GpeNetworkType(GenericNetworkType):
         self.delete_network_bridge(net)
 
 
+class BadDriver(Exception):
+    """If we have a driver load failure, we raise this"""
+    pass
+
+
 class NetworkInterfaceDriver(object):
     """A Driver that loads and manages all network types"""
 
-    # dict is populated when net_types register with the driver
-    net_types: Dict[str, GenericNetworkType] = {}  # Network-Type: DriverObj
 
     # Class Attributes VPPF and VPP are set on driver init
 
     def __init__(self, vppf):
-        self.__class__.vppf = vppf
-        self.__class__.vpp = vppf.vpp
+        self.vppf = vppf
+        self.vpp = vppf.vpp
+
+        # dict is populated when net_types register with the driver
+        self.net_types: Dict[str, GenericNetworkType] = {}  # Network-Type: DriverObj
+
         # Register network types with the Driver
         self.register_network_types()
-        # Ensure all types are valid
-        self.ensure_valid_types()
-
-    def ensure_valid_types(self):
-        """Ensures that a registered network type object is valid.
-
-        Ensures that the network type is a valid subclass of the base type
-        Sets the VPPF & VPP attribute for the network type.
-        """
-        for net_type, typeObj in self.net_types.items():
-            LOG.debug("Checking %s network type",
-                      net_type)
-            if not isinstance(typeObj, NetworkTypeBase):
-                LOG.error("Invalid network-type %s. "
-                          "Network type is expected to be an instance of the "
-                          "NetworkTypeBase Class", net_type)
-                sys.exit(1)
-            # Set the VPPF & VPP attribute of the type driver
-            LOG.debug("Setting VPPF & VPP attributes for the %s network type",
-                      net_type)
-            setattr(typeObj, 'vppf', self.__class__.vppf)
-            setattr(typeObj, 'vpp', self.__class__.vpp)
-
-    @classmethod
-    def register(cls, typeObj):
-        """Registers a Network Type Object with this Driver Class.
-
-        This is a class level method to enable arbitrary network types
-        to register with the driver without instantiating a driver object.
-
-        :param typeObj: A Network Type Object subclassed from
-                        GenericNetworkType
-        """
-        net_type = typeObj.net_type
-        LOG.debug("Registering network type %s with type driver",
-                  net_type)
-        if net_type not in cls.net_types:
-            cls.net_types[net_type] = typeObj
-            LOG.debug("Registered network type %s with the Type Driver",
-                      net_type)
-        else:
-            LOG.debug("%s network type is already registered",
-                      net_type)
 
     def register_network_types(self):
-        """Registers all base network types with the Driver."""
-        for net_type in [VlanNetworkType, FlatNetworkType, GpeNetworkType]:
-            net_type().hook_to_driver()
+        """Registers all configured network types."""
+
+        failure = {'msg': ''}
+
+        def add_failure(msg):
+            failure['msg'] += msg + "\n"
+
+        def on_failure(mgr, entrypoint, ex):
+            # Record any driver loading problems so we see them all together
+            add_failure(
+                '%s: failed to load %s: %s' % (mgr.namespace,
+                                                 entrypoint,
+                                                 ex))
+
+        drivers_to_load = cfg.CONF.ml2_vpp.network_types.split(',')
+        drivers_to_load = [f.strip().rstrip()
+                           for f in drivers_to_load]
+
+        for name in drivers_to_load:
+            try:
+                mgr = stevedore.driver.DriverManager(
+                    'networking_vpp.networks',
+                    name,
+                    invoke_on_load=True,
+                    invoke_args=(name, self.vppf, self.vpp),
+                    on_load_failure_callback=on_failure)
+
+                driver = mgr.driver
+
+                if not isinstance(driver, NetworkTypeBase):
+                    add_failure("Network driver %s does not implement the"
+                                " NetworkTypeBase API and cannot be loaded"
+                                % name)
+                else:
+                    self.net_types[name] = driver
+                    LOG.info("Loaded driver %s", name)
+
+            except stevedore.exception.NoMatches as e:
+                add_failure('Cannot find VPP network driver %s' % name)
+            except stevedore.exception.MultipleMatches as e:
+                add_failure('Multiple copies of VPP network driver %s available'
+                            % name)
+
+        if failure['msg'] != '':
+            raise BadDriver(failure['msg'])
 
     def ensure_network(self, physnet, net_type, segmentation_id):
         # Ensures network for a network-type & returns network data
-        return self._get_func("ensure_network", net_type)(physnet,
-                                                          net_type,
-                                                          segmentation_id)
+        return self._get_driver(net_type).ensure_network(
+            physnet,
+            net_type,
+            segmentation_id)
 
     def delete_network(self, physnet, net_type, segmentation_id):
         # Deletes network for a network-type
-        self._get_func("delete_network", net_type)(physnet,
-                                                   net_type,
-                                                   segmentation_id)
+        self._get_driver(net_type).delete_network(
+            physnet,
+            net_type,
+            segmentation_id)
 
     def get_network(self, physnet, net_type, segmentation_id):
         # Gets the network data for a network-type
-        return self._get_func("get_network", net_type)(physnet,
-                                                       net_type,
-                                                       segmentation_id)
+        return self._get_driver(net_type).get_network(
+            physnet,
+            net_type,
+            segmentation_id)
 
-    def _get_func(self, f_name, net_type):
+    def _get_driver(self, net_type):
         try:
-            driver = self.net_types[net_type]
-            func = getattr(driver, f_name)
-            return func
+            return self.net_types[net_type]
         except KeyError:
             LOG.error('net-driver: The network type '
                       '%s is not supported', net_type)
+
+            # TODO(ijw): maybe we only have to dail to find the
+            # socket?  I don't think it's the end of the world if we
+            # don't support a network type, because another host or
+            # driver (e.g. SRIOV) might support it
             sys.exit(1)
