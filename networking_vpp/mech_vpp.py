@@ -52,14 +52,14 @@ LOG = logging.getLogger(__name__)
 
 class VPPMechanismDriver(api.MechanismDriver):
     supported_vnic_types = [portbindings.VNIC_NORMAL]
-    allowed_network_types = [plugin_constants.TYPE_FLAT,
-                             plugin_constants.TYPE_VLAN,
-                             nvpp_const.TYPE_GPE]
+
     MECH_NAME = 'vpp'
 
     def initialize(self):
         config_opts.register_vpp_opts(cfg.CONF)
         compat.register_securitygroups_opts(cfg.CONF)
+
+        self.allowed_network_types = cfg.CONF.ml2_vpp.network_types
 
         self.communicator = EtcdAgentCommunicator(self.port_bind_complete)
 
