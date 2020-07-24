@@ -12,3 +12,4 @@ build
 .pydevproject
 .DS_Store
 .stestr
+.venv
