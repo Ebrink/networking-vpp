@@ -226,7 +226,7 @@ class VPPInterface(object):
         # being backwards compatible.
         try:
             func_call = getattr(self._vpp.api, func)
-        except AttributeError as e:
+        except AttributeError:
             func_call = getattr(self._vpp, func)
             # There should not be a need for the debug logs but just in case
             # there is just uncomment them below:

@@ -109,5 +109,6 @@ def main():
                 print('OK: key belongs to known port')
                 port_paths.remove(k)
 
+
 if __name__ == '__main__':
     main()

@@ -41,6 +41,7 @@ def overlay_struct(base, add):
         out = copy.copy(add)
     return out
 
+
 for f in sys.argv[1:]:
     with open(f) as inf:
         overlay = yaml.safe_load(inf)

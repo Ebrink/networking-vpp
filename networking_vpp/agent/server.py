@@ -166,9 +166,9 @@ def ipint(ip):
 
 ######################################################################
 
+
 # This mirrors functionality in Neutron so that we're creating a name
 # that Neutron can find for its agents.
-
 DEV_NAME_PREFIX = n_const.TAP_DEVICE_PREFIX
 
 ######################################################################
@@ -289,6 +289,7 @@ def DIRECTION_TAG(tag, is_vm_ingress):
     else:
         return VM_TO_VPP_TAG(tag)
 
+
 COMMON_SPOOF_TAG = VPP_TAG('common_spoof')
 COMMON_SPOOF_VPP_TO_VM_TAG = VPP_TO_VM_TAG(COMMON_SPOOF_TAG)
 COMMON_SPOOF_VM_TO_VPP_TAG = VM_TO_VPP_TAG(COMMON_SPOOF_TAG)
@@ -311,6 +312,7 @@ def decode_common_spoof_tag(tag):
         return 0
 
     return None
+
 
 SECGROUP_TAG = VPP_TAG('secgroup:')
 
@@ -2185,9 +2187,9 @@ class VPPForwarder(object):
             for router in self.router_external_interfaces.values():
                 if ipaddr(router['gateway_ip']) == \
                     ipaddr(local_ip):
-                        router['is_local'] = 0
-                        LOG.debug('Router external %s is no longer a local '
-                                  'route but now assigned to the BVI', router)
+                    router['is_local'] = 0
+                    LOG.debug('Router external %s is no longer a local '
+                              'route but now assigned to the BVI', router)
         else:
             # At this point, we can safetly remove both the SNAT and BVI
             # loopback interfaces as no local routes exist.
@@ -3745,6 +3747,7 @@ def main():
         mgr.call_all('run', cfg.CONF.host, client_factory, vppf, ops.pool)
 
     ops.process_ops()
+
 
 if __name__ == '__main__':
     main()

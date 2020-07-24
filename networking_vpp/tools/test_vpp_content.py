@@ -42,6 +42,7 @@ binding_host = sys.argv[1]
 def VPP_TAG(tag):
     return 'net-vpp.' + tag
 
+
 # MAX_PHYSNET_LENGTH + the tag format must be <= the 64 bytes of a VPP tag
 MAX_PHYSNET_LENGTH = 32
 TAG_PHYSNET_IF_PREFIX = VPP_TAG('physnet:')
@@ -192,6 +193,7 @@ def main():
     # Are the tagged ACLs populated correctly?
 
     # Do ports have the right ACLs bound?
+
 
 if __name__ == '__main__':
     main()
