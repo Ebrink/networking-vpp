@@ -349,9 +349,8 @@ class VPPForwarder(object):
     def __init__(self,
                  physnets,  # physnet_name: interface-name
                  mac_age,
-                 vpp_cmd_queue_len=None,
-                 read_timeout=None):
-        self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len, read_timeout,
+                 vpp_cmd_queue_len=None):
+        self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len,
                                     lock_type=real_thread_lock)
 
         self.net_driver = network_interface.NetworkInterfaceDriver(self)
@@ -3724,8 +3723,7 @@ def main():
     mac_age_min = int((cfg.CONF.ml2_vpp.mac_age + 59) // 60)
     vppf = VPPForwarder(physnets,
                         mac_age=mac_age_min,
-                        vpp_cmd_queue_len=cfg.CONF.ml2_vpp.vpp_cmd_queue_len,
-                        read_timeout=cfg.CONF.ml2_vpp.read_timeout
+                        vpp_cmd_queue_len=cfg.CONF.ml2_vpp.vpp_cmd_queue_len
                         )
 
     # Deal with etcd-side setup

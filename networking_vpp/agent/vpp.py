@@ -142,7 +142,6 @@ class VPPInterface(object):
         self,
         log,  # type: logging.Logger
         vpp_cmd_queue_len=None,  # type: Optional[int]
-        read_timeout=None,  # type: Optional[int]
         lock_type=Lock):
         # lock_type is threading.Lock.  We need this here because
         # regardless of the model that the rest of the program uses
@@ -175,8 +174,6 @@ class VPPInterface(object):
 
         if vpp_cmd_queue_len is not None:
             args['rx_qlen'] = vpp_cmd_queue_len
-        if read_timeout is not None:
-            args['read_timeout'] = read_timeout
 
         self._vpp.connect("python-VPPInterface",
                           **args)
