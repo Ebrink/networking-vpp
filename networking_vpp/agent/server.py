@@ -2960,7 +2960,12 @@ class EtcdListener(object):
             - bind the subports, and
             - set subport state to admin UP
         """
-        for parent_port, subports in self.subports_awaiting_parents.items():
+
+        # Get the list of *currently* awaiting subports
+        # (allows us to change and clear up the dict as we go through them)
+        awaiting_subports = list(self.subports_awaiting_parents.items())
+
+        for parent_port, subports in awaiting_subports:
             LOG.debug('reconsidering bind for trunk subports %s, parent %s',
                       subports, parent_port)
             props = self.vppf.interfaces.get(parent_port, None)
