@@ -590,31 +590,31 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
             span_mode = tap_flow_info['span_mode']
             if span_mode == 3:  # ERSPAN
-                    dest_type = tap_flow_info['tf']['dest_type']
-                    dst_idx = tap_flow_info['dst_idx']
-                    source_port_idx = tap_flow_info['port_idx']
-                    self.vppf.vpp.disable_port_mirroring(source_port_idx,
-                                                         dst_idx)
-                    if dest_type == 'ERSPAN_INT':
-                        self.vppf.vpp.delete_from_bridge(dst_idx)
-                    taas_id = tap_flow_info['tf']['taas_id']
-                    tf_host = tap_flow_info['tf']['tf_host']
-                    ts_host = tap_flow_info['ts_host']
-                    session_id = tap_flow_info['session_id']
-                    dst_addr = tap_flow_info['dst_adr']
-                    src_addr = self.esp_src_addr
-                    self._delete_erspan_tunnel(src_addr, dst_addr, session_id)
-                    if dest_type == 'ERSPAN_INT':
-                        tf_nb = self._get_num_flow(tf_host, taas_id)
-                        if tf_nb == 0:
-                            loop_idx = tap_flow_info['loop_idx']
-                            self.vppf.vpp.delete_loopback(loop_idx)
-                            if tf_host != ts_host:
-                                physnet = tap_flow_info['physnet']
-                                net_type = 'vlan'
-                                seg_id = taas_id
-                                self.vppf.net_driver.delete_network(
-                                    physnet, net_type, seg_id)
+                dest_type = tap_flow_info['tf']['dest_type']
+                dst_idx = tap_flow_info['dst_idx']
+                source_port_idx = tap_flow_info['port_idx']
+                self.vppf.vpp.disable_port_mirroring(source_port_idx,
+                                                     dst_idx)
+                if dest_type == 'ERSPAN_INT':
+                    self.vppf.vpp.delete_from_bridge(dst_idx)
+                taas_id = tap_flow_info['tf']['taas_id']
+                tf_host = tap_flow_info['tf']['tf_host']
+                ts_host = tap_flow_info['ts_host']
+                session_id = tap_flow_info['session_id']
+                dst_addr = tap_flow_info['dst_adr']
+                src_addr = self.esp_src_addr
+                self._delete_erspan_tunnel(src_addr, dst_addr, session_id)
+                if dest_type == 'ERSPAN_INT':
+                    tf_nb = self._get_num_flow(tf_host, taas_id)
+                    if tf_nb == 0:
+                        loop_idx = tap_flow_info['loop_idx']
+                        self.vppf.vpp.delete_loopback(loop_idx)
+                        if tf_host != ts_host:
+                            physnet = tap_flow_info['physnet']
+                            net_type = 'vlan'
+                            seg_id = taas_id
+                            self.vppf.net_driver.delete_network(
+                                physnet, net_type, seg_id)
             else:
                 tfn = tap_flow_info['tfn']
                 if tfn:

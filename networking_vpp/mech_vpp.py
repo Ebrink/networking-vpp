@@ -64,7 +64,7 @@ class VPPMechanismDriver(api.MechanismDriver):
         self.communicator = EtcdAgentCommunicator(self.port_bind_complete)
 
         names = names = cfg.CONF.ml2_vpp.driver_extensions
-        if names is not '':
+        if names != '':
             self.mgr = ExtensionManager(
                 'networking_vpp.driver.extensions',
                 names,
@@ -289,12 +289,12 @@ class VPPMechanismDriver(api.MechanismDriver):
                         port_context.original['binding:profile'] and
                     port_context.original['binding:profile']['migrating_to']
                         == port_context.host):
-                        self.communicator.unbind(
-                            port_context._plugin_context.session,
-                            port_context.original,
-                            port_context.original_host,
-                            current_bind[api.BOUND_SEGMENT]
-                            )
+                    self.communicator.unbind(
+                        port_context._plugin_context.session,
+                        port_context.original,
+                        port_context.original_host,
+                        current_bind[api.BOUND_SEGMENT]
+                    )
 
     def port_bind_complete(self, port_id, host):
         """Tell things that the port is truly bound.

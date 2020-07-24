@@ -682,14 +682,14 @@ class VPPForwarderTestCase(base.BaseTestCase):
                                return_value=5):
             with mock.patch.object(self.vpp.vpp, 'get_snat_interfaces',
                                    return_value=[5]):
-                    with mock.patch.object(
-                        self.vpp.vpp, 'get_interface_ip_addresses',
+                with mock.patch.object(
+                    self.vpp.vpp, 'get_interface_ip_addresses',
                         return_value=[(ip_address(six.text_type(interface_ip)),
                                        prefixlen)]):
-                        self.vpp.ensure_router_interface_on_host(
-                            uuidgen.uuid1(), router)
-                        self.vpp.vpp.set_snat_on_interface.assert_not_called()
-                        self.vpp.vpp.set_interface_ip.assert_not_called()
+                    self.vpp.ensure_router_interface_on_host(
+                        uuidgen.uuid1(), router)
+                    self.vpp.vpp.set_snat_on_interface.assert_not_called()
+                    self.vpp.vpp.set_interface_ip.assert_not_called()
 
     def test_delete_router_external_gateway_on_host(self):
         router_port = self._get_mock_router_external_interface()

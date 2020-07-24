@@ -41,11 +41,12 @@ except ImportError:
     import neutron.context
     context = neutron.context
 
+
 try:
-   from neutron_lib.api.definitions import provider_net as n_provider
+    from neutron_lib.api.definitions import provider_net as n_provider
 except ImportError:
-   # Newton, at least, has this:
-   from neutron.extensions import providernet as n_provider
+    # Newton, at least, has this:
+    from neutron.extensions import providernet as n_provider  # noqa: F401
 
 try:
     # Mitaka+
@@ -83,9 +84,9 @@ try:
     from neutron.callbacks import resources
 except ImportError:
     # Queens+
-    from neutron_lib.callbacks import events
-    from neutron_lib.callbacks import registry
-    from neutron_lib.callbacks import resources
+    from neutron_lib.callbacks import events  # noqa: F401
+    from neutron_lib.callbacks import registry  # noqa: F401
+    from neutron_lib.callbacks import resources  # noqa: F401
 
 try:
     # Newton+
@@ -112,7 +113,7 @@ try:
 except ImportError:
     # Stein onwards
     from neutron_lib.db import api as neutron_db_api
-    from neutron_lib.db import resource_extend
+    from neutron_lib.db import resource_extend  # noqa: F401
     db_context_writer = neutron_db_api.CONTEXT_WRITER
     db_context_reader = neutron_db_api.CONTEXT_READER
 
@@ -124,6 +125,7 @@ try:
 except ImportError:
     # Map changed trunk constants in Train
     from neutron_lib.services.trunk import constants
+
     class new_trunk_const(object):
         VLAN = constants.SEGMENTATION_TYPE_VLAN
         TRUNK = 'trunk'
@@ -144,6 +146,7 @@ except AttributeError:
         # Rocky
         n_const.L3 = neutron_lib.plugins.constants.L3
 
+
 # Register security group option
 def register_securitygroups_opts(cfg):
     # Mitaka compatibility
@@ -162,6 +165,7 @@ def register_securitygroups_opts(cfg):
                 hasattr(cfg.CONF.SECURITYGROUP.enable_security_group)):
             cfg.register_opts(security_group_opts, 'SECURITYGROUP')
 
+
 def register_ml2_base_opts(cfg):
     try:
         # Older
@@ -172,22 +176,24 @@ def register_ml2_base_opts(cfg):
         from neutron.conf.plugins.ml2 import config
         config.register_ml2_plugin_opts(cfg)
 
+
 try:
     # (for, specifically, get_random_mac)
     # Newer:
     from neutron_lib.utils import net as net_utils
-    if not hasattr(net_utils,'get_random_mac'):  # Check for Newton
+    if not hasattr(net_utils, 'get_random_mac'):  # Check for Newton
         raise AttributeError
 except (ImportError, AttributeError):
     # Older:
     from neutron.common import utils as net_utils
-assert hasattr(net_utils,'get_random_mac') == True
+assert hasattr(net_utils, 'get_random_mac') is True
 
 try:
     from neutron.plugins.ml2 import driver_api
-except:
+except ImportError:
     # Between Pike and Queens
-    from neutron_lib.plugins.ml2 import api as driver_api
+    from neutron_lib.plugins.ml2 import api as driver_api  # noqa: F401
+
 
 import os
 import re

@@ -37,11 +37,11 @@ class FakeConfig(object):
 class TestAgentUtils(base.BaseTestCase):
 
     def parse_config_test_run(self, host, port, user=None, pw=None):
-            fk = FakeConfig(host, port, user, pw)
+        fk = FakeConfig(host, port, user, pw)
 
-            cf = etcdutils.EtcdClientFactory(fk)
+        cf = etcdutils.EtcdClientFactory(fk)
 
-            return cf.etcd_args['host']
+        return cf.etcd_args['host']
 
     def test_pass_user_password(self):
         # The defaults

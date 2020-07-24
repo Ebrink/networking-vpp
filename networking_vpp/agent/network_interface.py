@@ -19,11 +19,12 @@ from networking_vpp.agent import server
 from networking_vpp.extension import VPPAgentExtensionBase
 from oslo_config import cfg
 from oslo_log import log as logging
-import sys
 import stevedore.driver
+import sys
 from typing import Dict
 
 LOG = logging.getLogger(__name__)
+
 
 # TODO(ijw): is this an agent extension?  Unclear, but it would be
 # nice if it worked out the dependency needs since other extensions
@@ -291,7 +292,6 @@ class BadDriver(Exception):
 class NetworkInterfaceDriver(object):
     """A Driver that loads and manages all network types"""
 
-
     # Class Attributes VPPF and VPP are set on driver init
 
     def __init__(self, vppf):
@@ -299,7 +299,8 @@ class NetworkInterfaceDriver(object):
         self.vpp = vppf.vpp
 
         # dict is populated when net_types register with the driver
-        self.net_types: Dict[str, GenericNetworkType] = {}  # Network-Type: DriverObj
+        # Network-Type: DriverObj
+        self.net_types: Dict[str, GenericNetworkType] = {}
 
         # Register network types with the Driver
         self.register_network_types()
@@ -316,8 +317,8 @@ class NetworkInterfaceDriver(object):
             # Record any driver loading problems so we see them all together
             add_failure(
                 '%s: failed to load %s: %s' % (mgr.namespace,
-                                                 entrypoint,
-                                                 ex))
+                                               entrypoint,
+                                               ex))
 
         drivers_to_load = cfg.CONF.ml2_vpp.network_types.split(',')
         drivers_to_load = [f.strip().rstrip()
@@ -342,11 +343,12 @@ class NetworkInterfaceDriver(object):
                     self.net_types[name] = driver
                     LOG.info("Loaded driver %s", name)
 
-            except stevedore.exception.NoMatches as e:
+            except stevedore.exception.NoMatches:
                 add_failure('Cannot find VPP network driver %s' % name)
-            except stevedore.exception.MultipleMatches as e:
-                add_failure('Multiple copies of VPP network driver %s available'
-                            % name)
+            except stevedore.exception.MultipleMatches:
+                add_failure(
+                    'Multiple copies of VPP network driver %s available'
+                    % name)
 
         if failure['msg'] != '':
             raise BadDriver(failure['msg'])

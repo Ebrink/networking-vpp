@@ -327,6 +327,7 @@ class GPEForwarder(object):
         LOG.debug('Successfully created a GPE lookup map by querying vpp %s',
                   self.gpe_map)
 
+
 GPE_KEY_SPACE = LEADIN + "/global/networks/gpe"
 
 

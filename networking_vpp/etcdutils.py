@@ -797,8 +797,8 @@ class EtcdHelper(object):
             # Already gone, so not a problem
             pass
 
-# Base connection to etcd, using standard options.
 
+# Base connection to etcd, using standard options.
 _etcd_conn_opts = [
     cfg.StrOpt('etcd_host', default="127.0.0.1",
                help=_("Etcd host IP address(es) to connect etcd client."

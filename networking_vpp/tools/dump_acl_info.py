@@ -234,5 +234,6 @@ def main():
                           rule["tcp_flags_mask"],
                           rule["tcp_flags_value"]))
 
+
 if __name__ == '__main__':
     main()
