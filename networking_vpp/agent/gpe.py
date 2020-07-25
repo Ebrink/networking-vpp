@@ -18,7 +18,7 @@ import ipaddress
 import re
 import sys
 
-from networking_vpp.compat import plugin_constants
+from networking_vpp.compat import n_const
 from networking_vpp import constants as nvpp_const
 from networking_vpp import etcdutils
 from oslo_config import cfg
@@ -406,7 +406,7 @@ class GpeListener(object):
         router_ports.update(self.vppf.router_external_interfaces)
         for port in router_ports:
             data = router_ports[port]
-            vxlan_bound = data['net_type'] == plugin_constants.TYPE_VXLAN
+            vxlan_bound = data['net_type'] == n_const.TYPE_VXLAN
             seg_id = data['segmentation_id']
             mac_addr = data['mac_address']
             ip_addr = data['gateway_ip']

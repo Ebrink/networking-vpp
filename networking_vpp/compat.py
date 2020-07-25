@@ -13,95 +13,50 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-# Some constants and verifier functions have been deprecated but are still
-# used by earlier releases of neutron. In order to maintain
-# backwards-compatibility with stable/mitaka this will act as a translator
-# that passes constants and functions according to version number.
 
-# neutron_lib has a bunch of hacking checks explicitly to ensure that
-# newer versions of mech drivers don't go loading Neutron files.
-# Obviously, since we're trying to achieve backward compatibility, we
-# do precisely that - but that should only happen in this file.  The
-# no-qa comments are to allow that to work.
+# Compat used to make a lot of decisions about where a file should be
+# loaded from, and the remainder of the code simply uses compat.XXX to
+# save making the decisions everywhere.
 
-try:
-    # Ocata+
-    import neutron_lib.api.definitions.portbindings
-    portbindings = neutron_lib.api.definitions.portbindings
+# Most of this is now very old, and we intend to remove pre-Queens support.
 
-except ImportError:
-    import neutron.extensions.portbindings  # flake8: noqa: N530
-    portbindings = neutron.extensions.portbindings
+# Phase 1 of this is to remove the decision making logic and still use
+# compat imports, which is what you're looking at here.  Lots of noqa,
+# because PEP8 quite reasonably assumes we're loading these for use in
+# this file, not for other files to import from this module.
 
-try:
-    # Newton+
-    import neutron_lib.context
-    context = neutron_lib.context
-except ImportError:
-    import neutron.context
-    context = neutron.context
+# Ocata+
+import neutron_lib.api.definitions.portbindings as portbindings  # noqa: F401
 
+# Newton+
+from neutron_lib import context  # noqa: F401
 
-try:
-    from neutron_lib.api.definitions import provider_net as n_provider
-except ImportError:
-    # Newton, at least, has this:
-    from neutron.extensions import providernet as n_provider  # noqa: F401
+# Ocata+
+import neutron_lib.api.definitions.provider_net as n_provider  # noqa: F401
 
-try:
-    # Mitaka+
-    import neutron_lib.constants
-    import neutron_lib.exceptions
+# Mitaka+
+import neutron_lib.constants as n_const  # noqa: F401
+import neutron_lib.exceptions as n_exc  # noqa: F401
 
-    n_const = neutron_lib.constants
-    n_exc = neutron_lib.exceptions
+# Plugin (service extension) types
+import neutron_lib.plugins.constants as plugin_constants  # noqa: F401
 
-except ImportError:
-    import neutron.common.constants  # noqa: N530
-    import neutron.common.exceptions  # noqa: N530
+# Queens+
+from neutron_lib.callbacks import events  # noqa: F401
+from neutron_lib.callbacks import registry  # noqa: F401
+from neutron_lib.callbacks import resources  # noqa: F401
 
-    n_const = neutron.common.constants
-    n_exec = neutron.common.exceptions
+# Newton+
+import neutron_lib.db.model_base as model_base  # noqa: F401
+import neutron_lib.plugins.directory as directory  # noqa: F401
 
-# Some of the TYPE_XXX objects also moved in Pike/Queens
-if hasattr(n_const, 'TYPE_FLAT'):
-    plugin_constants = n_const
-else:
-    import neutron.plugins.common.constants
-    plugin_constants = neutron.plugins.common.constants
+# (for, specifically, get_random_mac)
+# Newton+:
+from neutron_lib.utils import net as net_utils  # noqa: F401
 
-try:
-    n_const.UUID_PATTERN
-except AttributeError:
-    HEX_ELEM = '[0-9A-Fa-f]'
-    n_const.UUID_PATTERN = '-'.join([HEX_ELEM + '{8}', HEX_ELEM + '{4}',
-                                     HEX_ELEM + '{4}', HEX_ELEM + '{4}',
-                                     HEX_ELEM + '{12}'])
+# Between Pike and Queens
+from neutron_lib.plugins.ml2 import api as driver_api  # noqa: F401
 
-try:
-    from neutron.callbacks import events
-    from neutron.callbacks import registry
-    from neutron.callbacks import resources
-except ImportError:
-    # Queens+
-    from neutron_lib.callbacks import events  # noqa: F401
-    from neutron_lib.callbacks import registry  # noqa: F401
-    from neutron_lib.callbacks import resources  # noqa: F401
-
-try:
-    # Newton+
-    import neutron_lib.db.model_base
-    import neutron_lib.plugins.directory
-
-    model_base = neutron_lib.db.model_base
-    directory = neutron_lib.plugins.directory
-
-except ImportError:
-    import neutron.db.model_base  # noqa: N530
-    import neutron.manager  # noqa: N530
-
-    directory = neutron.manager.NeutronManager
-    model_base = neutron.db.model_base
 
 # Staying abreast of neutron.db changes in Stein
 try:
@@ -135,31 +90,3 @@ except ImportError:
         ERROR_STATUS = constants.TRUNK_ERROR_STATUS
         SUBPORTS = 'subports'
     trunk_const = new_trunk_const
-
-try:
-    # Newton
-    n_const.L3
-except AttributeError:
-    try:
-        n_const.L3 = plugin_constants.L3_ROUTER_NAT
-    except AttributeError:
-        # Rocky
-        n_const.L3 = neutron_lib.plugins.constants.L3
-
-
-try:
-    # (for, specifically, get_random_mac)
-    # Newer:
-    from neutron_lib.utils import net as net_utils
-    if not hasattr(net_utils, 'get_random_mac'):  # Check for Newton
-        raise AttributeError
-except (ImportError, AttributeError):
-    # Older:
-    from neutron.common import utils as net_utils
-assert hasattr(net_utils, 'get_random_mac') is True
-
-try:
-    from neutron.plugins.ml2 import driver_api
-except ImportError:
-    # Between Pike and Queens
-    from neutron_lib.plugins.ml2 import api as driver_api  # noqa: F401

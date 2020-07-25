@@ -18,6 +18,8 @@ import neutron.conf.agent.securitygroups_rpc
 import neutron.conf.plugins.ml2.config
 from neutron.tests import base  # flake8: noqa: N530
 
+import networking_vpp.compat
+
 
 class TestBridgeFunctions(base.BaseTestCase):
     def test_bridge_lib_compatibility(self):
@@ -46,3 +48,22 @@ class TestOptions(base.BaseTestCase):
                         dir(neutron.conf.agent.securitygroups_rpc))
         self.assertTrue('register_ml2_plugin_opts' in
                         dir(neutron.conf.plugins.ml2.config))
+
+
+class TestCompat(base.BaseTestCase):
+    def test_compat_imports_provide(self):
+        # segment types
+        self.assertTrue(hasattr(networking_vpp.compat.n_const, 'TYPE_VXLAN'))
+        self.assertTrue(hasattr(networking_vpp.compat.n_const, 'TYPE_VLAN'))
+        self.assertTrue(hasattr(networking_vpp.compat.n_const, 'TYPE_FLAT'))
+        self.assertTrue(hasattr(networking_vpp.compat.n_const, 'TYPE_NONE'))
+
+        # service extension types
+        self.assertTrue(hasattr(networking_vpp.compat.plugin_constants, 'L3'))
+
+        # usefule functions and constants
+
+        self.assertTrue(isinstance(networking_vpp.compat.n_const.UUID_PATTERN,
+                                   str))
+
+        self.assertTrue(networking_vpp.compat.net_utils, 'get_random_mac')

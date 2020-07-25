@@ -29,12 +29,8 @@ from networking_vpp.compat import db_context_writer
 from networking_vpp.compat import n_const as constants
 from networking_vpp.compat import n_exc
 from networking_vpp.compat import n_provider as provider
+from networking_vpp.compat import plugin_constants
 
-# TODO(ijw): backward compatibility doesn't really belong here
-try:
-    from neutron_lib.plugins import constants as plugin_constants
-except ImportError:
-    pass
 
 try:
     # Newton release compatibility
@@ -259,11 +255,7 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
                 self.communicator.kick()
 
     def get_plugin_type(self):
-        # TODO(ijw): not really the right place for backward compatibility...
-        try:
-            return plugin_constants.L3
-        except Exception:
-            return constants.L3
+        return plugin_constants.L3
 
     def get_plugin_description(self):
         """Returns string description of the plugin."""

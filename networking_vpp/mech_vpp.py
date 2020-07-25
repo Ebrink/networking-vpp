@@ -28,7 +28,6 @@ from networking_vpp.compat import context as n_context
 from networking_vpp.compat import directory
 from networking_vpp.compat import driver_api as api
 from networking_vpp.compat import n_const
-from networking_vpp.compat import plugin_constants
 from networking_vpp.compat import portbindings
 from networking_vpp import config_opts
 from networking_vpp import constants as nvpp_const
@@ -185,8 +184,8 @@ class VPPMechanismDriver(api.MechanismDriver):
             )
             return False
 
-        if network_type in [plugin_constants.TYPE_FLAT,
-                            plugin_constants.TYPE_VLAN]:
+        if network_type in [n_const.TYPE_FLAT,
+                            n_const.TYPE_VLAN]:
             physnet = segment[api.PHYSICAL_NETWORK]
             if not self.physnet_known(host, physnet):
                 LOG.debug(
