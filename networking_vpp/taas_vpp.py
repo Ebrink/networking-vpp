@@ -14,15 +14,15 @@
 
 """VPP Taas service plugin."""
 import eventlet
-from networking_vpp.compat import context as n_context
-from networking_vpp.compat import n_exc
 from networking_vpp.constants import LEADIN
 from networking_vpp.db import db
 from networking_vpp import etcdutils
 from networking_vpp.extension import MechDriverExtensionBase
 
 from neutron_lib import constants
+from neutron_lib import context as n_context
 from neutron_lib.db import api as lib_db_api
+import neutron_lib.exceptions as n_exc
 from neutron_taas.extensions import taas as taas_ex
 from neutron_taas.services.taas import service_drivers
 

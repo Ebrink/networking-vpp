@@ -14,50 +14,6 @@
 #    under the License.
 
 
-# Compat used to make a lot of decisions about where a file should be
-# loaded from, and the remainder of the code simply uses compat.XXX to
-# save making the decisions everywhere.
-
-# Most of this is now very old, and we intend to remove pre-Queens support.
-
-# Phase 1 of this is to remove the decision making logic and still use
-# compat imports, which is what you're looking at here.  Lots of noqa,
-# because PEP8 quite reasonably assumes we're loading these for use in
-# this file, not for other files to import from this module.
-
-# Ocata+
-import neutron_lib.api.definitions.portbindings as portbindings  # noqa: F401
-
-# Newton+
-from neutron_lib import context  # noqa: F401
-
-# Ocata+
-import neutron_lib.api.definitions.provider_net as n_provider  # noqa: F401
-
-# Mitaka+
-import neutron_lib.constants as n_const  # noqa: F401
-import neutron_lib.exceptions as n_exc  # noqa: F401
-
-# Plugin (service extension) types
-import neutron_lib.plugins.constants as plugin_constants  # noqa: F401
-
-# Queens+
-from neutron_lib.callbacks import events  # noqa: F401
-from neutron_lib.callbacks import registry  # noqa: F401
-from neutron_lib.callbacks import resources  # noqa: F401
-
-# Newton+
-import neutron_lib.db.model_base as model_base  # noqa: F401
-import neutron_lib.plugins.directory as directory  # noqa: F401
-
-# (for, specifically, get_random_mac)
-# Newton+:
-from neutron_lib.utils import net as net_utils  # noqa: F401
-
-# Between Pike and Queens
-from neutron_lib.plugins.ml2 import api as driver_api  # noqa: F401
-
-
 # Staying abreast of neutron.db changes in Stein
 try:
     # Rocky and before

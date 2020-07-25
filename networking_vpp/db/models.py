@@ -14,9 +14,12 @@
 #    under the License.
 
 
-from networking_vpp.compat import model_base
+from neutron_lib.db import model_base
+
 from neutron.objects import base
+
 from oslo_versionedobjects import fields as obj_fields
+
 import sqlalchemy as sa
 
 

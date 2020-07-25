@@ -14,7 +14,7 @@
 #    under the License.
 
 from networking_vpp._i18n import _
-from networking_vpp.compat import n_exc
+import neutron_lib.exceptions as n_exc
 
 
 class InvalidEtcdCAConfig(n_exc.NeutronException):

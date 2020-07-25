@@ -18,13 +18,14 @@ import ipaddress
 import re
 import sys
 
-from networking_vpp.compat import n_const
 from networking_vpp import constants as nvpp_const
 from networking_vpp import etcdutils
+
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
 
+import neutron_lib.constants as n_const
 
 LOG = logging.getLogger(__name__)
 

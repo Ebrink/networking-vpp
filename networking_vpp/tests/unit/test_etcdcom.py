@@ -15,12 +15,16 @@
 from unittest import mock
 
 import etcd
-from networking_vpp.compat import driver_api as api
-from networking_vpp.compat import n_const
+
+import neutron_lib.constants as n_const
+from neutron_lib.plugins.ml2 import api
+
 from networking_vpp import config_opts
 from networking_vpp import mech_vpp
+
 import neutron.conf.agent.securitygroups_rpc
 from neutron.tests import base
+
 from oslo_config import cfg
 
 FAKE_PORT = {'status': 'DOWN',

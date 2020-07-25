@@ -48,8 +48,6 @@ import time
 from networking_vpp.agent import gpe
 from networking_vpp.agent import network_interface
 from networking_vpp.agent import vpp
-from networking_vpp.compat import n_const
-from networking_vpp.compat import net_utils
 from networking_vpp import config_opts
 from networking_vpp import constants as nvpp_const
 from networking_vpp import etcdutils
@@ -60,6 +58,9 @@ from networking_vpp.mech_vpp import SecurityGroupRule
 from networking_vpp.utils import device_monitor_async
 from networking_vpp.utils import file_monitor
 from networking_vpp import version
+
+import neutron_lib.constants as n_const
+from neutron_lib.utils import net as net_utils
 
 from neutron.agent.linux import bridge_lib
 from neutron.agent.linux import ip_lib

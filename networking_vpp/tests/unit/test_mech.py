@@ -17,11 +17,13 @@
 from unittest import mock
 
 from networking_vpp import config_opts
+from networking_vpp import mech_vpp
 
 import etcd
-from networking_vpp.compat import driver_api as api
-from networking_vpp.compat import n_const
-from networking_vpp import mech_vpp
+
+import neutron_lib.constants as n_const
+from neutron_lib.plugins.ml2 import api
+
 import neutron.conf.agent.securitygroups_rpc
 import neutron.conf.plugins.ml2.config
 from neutron.tests import base

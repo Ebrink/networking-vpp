@@ -15,14 +15,8 @@
 #
 
 import copy
-from networking_vpp.compat import context
 from networking_vpp.compat import db_context_writer
-from networking_vpp.compat import events
-from networking_vpp.compat import n_provider as provider
-from networking_vpp.compat import portbindings
-from networking_vpp.compat import registry
 from networking_vpp.compat import resource_extend
-from networking_vpp.compat import resources
 from networking_vpp.compat import trunk_const
 from networking_vpp import constants as nvpp_const
 from networking_vpp.db import db
@@ -34,11 +28,15 @@ from neutron.objects import base as objects_base
 from neutron.objects import trunk as trunk_objects
 
 from neutron_lib.api.definitions import port as port_def
+from neutron_lib.api.definitions import portbindings
+from neutron_lib.api.definitions import provider_net
+from neutron_lib.callbacks import events
+from neutron_lib.callbacks import registry
+from neutron_lib.callbacks import resources
+from neutron_lib import context
 from neutron_lib.plugins import directory
-try:
-    from neutron_lib.plugins import utils as plugin_utils
-except ImportError:
-    from neutron.plugins.common import utils as plugin_utils
+from neutron_lib.plugins import utils as plugin_utils
+
 
 from neutron.services.trunk import callbacks
 from neutron.services.trunk import exceptions as trunk_exc
@@ -276,9 +274,9 @@ class VppTrunkPlugin(service_base.ServicePluginBase):
             port = self._get_core_plugin().get_port(context, port_id)
             network = self._get_core_plugin().get_network(context,
                                                           port['network_id'])
-            subport['physnet'] = network[provider.PHYSICAL_NETWORK]
-            subport['uplink_seg_type'] = network[provider.NETWORK_TYPE]
-            subport['uplink_seg_id'] = network[provider.SEGMENTATION_ID]
+            subport['physnet'] = network[provider_net.PHYSICAL_NETWORK]
+            subport['uplink_seg_type'] = network[provider_net.NETWORK_TYPE]
+            subport['uplink_seg_id'] = network[provider_net.SEGMENTATION_ID]
             subport['allowed_address_pairs'] = port['allowed_address_pairs']
             subport['port_security_enabled'] = port['port_security_enabled']
             subport['security_groups'] = port['security_groups']

@@ -21,15 +21,16 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from neutron.db import l3_gwmode_db
-from neutron_lib.db import model_query
-from neutron_lib.services import base as service_base
 
 from networking_vpp.compat import db_context_reader
 from networking_vpp.compat import db_context_writer
-from networking_vpp.compat import n_const as constants
-from networking_vpp.compat import n_exc
-from networking_vpp.compat import n_provider as provider
-from networking_vpp.compat import plugin_constants
+
+from neutron_lib.api.definitions import provider_net
+import neutron_lib.constants as n_const
+from neutron_lib.db import model_query
+import neutron_lib.exceptions as n_exc
+import neutron_lib.plugins.constants as plugin_constants
+from neutron_lib.services import base as service_base
 
 
 try:
@@ -86,21 +87,24 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
             internal_network = self._core_plugin.get_network(
                 context, port['network_id'])
             LOG.debug("Router: Associating floating ip: %s", fip_dict)
-            if internal_network[provider.NETWORK_TYPE] == nvpp_const.TYPE_GPE:
+            if internal_network[provider_net.NETWORK_TYPE] \
+               == nvpp_const.TYPE_GPE:
                 internal_physnet = self.gpe_physnet
             else:
                 internal_physnet = internal_network[
-                    provider.PHYSICAL_NETWORK]
+                    provider_net.PHYSICAL_NETWORK]
             vpp_floatingip_dict = {
                 'external_physnet': external_network[
-                    provider.PHYSICAL_NETWORK],
-                'external_net_type': external_network[provider.NETWORK_TYPE],
+                    provider_net.PHYSICAL_NETWORK],
+                'external_net_type': external_network[
+                    provider_net.NETWORK_TYPE],
                 'external_segmentation_id':
-                    external_network[provider.SEGMENTATION_ID],
+                    external_network[provider_net.SEGMENTATION_ID],
                 'internal_physnet': internal_physnet,
-                'internal_net_type': internal_network[provider.NETWORK_TYPE],
+                'internal_net_type': internal_network[
+                    provider_net.NETWORK_TYPE],
                 'internal_segmentation_id':
-                    internal_network[provider.SEGMENTATION_ID],
+                    internal_network[provider_net.SEGMENTATION_ID],
                 'fixed_ip_address': fip_dict.get('fixed_ip_address'),
                 'floating_ip_address': fip_dict.get('floating_ip_address')
             }
@@ -163,12 +167,12 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
         router_dict['is_ipv6'] = True if address.version == 6 else False
         router_dict['prefixlen'] = address.prefixlen
         router_dict['mtu'] = network['mtu']
-        router_dict['segmentation_id'] = network[provider.SEGMENTATION_ID]
-        router_dict['net_type'] = network[provider.NETWORK_TYPE]
+        router_dict['segmentation_id'] = network[provider_net.SEGMENTATION_ID]
+        router_dict['net_type'] = network[provider_net.NETWORK_TYPE]
         if router_dict['net_type'] == nvpp_const.TYPE_GPE:
             router_dict['physnet'] = self.gpe_physnet
         else:
-            router_dict['physnet'] = network[provider.PHYSICAL_NETWORK]
+            router_dict['physnet'] = network[provider_net.PHYSICAL_NETWORK]
         # Get VRF corresponding to the router
         vrf_id = db.get_router_vrf(context.session, router_id)
         router_dict['vrf_id'] = vrf_id
@@ -210,10 +214,11 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
             context, router_dict['external_gateway_info']['network_id'])
         LOG.debug("Router external gateway network data: %s", network)
         # Grab the external network info
-        router_dict['external_physnet'] = network[provider.PHYSICAL_NETWORK]
+        router_dict['external_physnet'] = network[
+            provider_net.PHYSICAL_NETWORK]
         router_dict['external_segmentation_id'] = network[
-            provider.SEGMENTATION_ID]
-        router_dict['external_net_type'] = network[provider.NETWORK_TYPE]
+            provider_net.SEGMENTATION_ID]
+        router_dict['external_net_type'] = network[provider_net.NETWORK_TYPE]
         router_dict['mtu'] = network['mtu']
         # The Neutron port created for the gateway
         gateway_port = router_dict['gw_port_id']
@@ -315,7 +320,7 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
     def create_floatingip(self, context, floatingip):
         fip_dict = super(VppL3RouterPlugin, self).create_floatingip(
             context, floatingip,
-            initial_status=constants.FLOATINGIP_STATUS_ACTIVE)
+            initial_status=n_const.FLOATINGIP_STATUS_ACTIVE)
         if fip_dict.get('port_id') is not None:
             self._process_floatingip(context, fip_dict, 'associate')
             self.communicator.kick()
@@ -332,13 +337,13 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
             vpp_fip_dict = fip_dict
             self.update_floatingip_status(
                 context, floatingip_id,
-                constants.FLOATINGIP_STATUS_ACTIVE)
+                n_const.FLOATINGIP_STATUS_ACTIVE)
         else:
             event_type = 'disassociate'
             vpp_fip_dict = org_fip_dict
             self.update_floatingip_status(
                 context, floatingip_id,
-                constants.FLOATINGIP_STATUS_DOWN)
+                n_const.FLOATINGIP_STATUS_DOWN)
         self._process_floatingip(context, vpp_fip_dict, event_type)
 
         return fip_dict

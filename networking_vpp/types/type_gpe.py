@@ -14,24 +14,24 @@
 #    under the License.
 
 from itertools import chain
+
+from networking_vpp.compat import db_context_writer
 from networking_vpp import config_opts
 from networking_vpp import constants as nvpp_const
+from networking_vpp.db.models import GpeAllocation
 from networking_vpp import exceptions as nvpp_exc
 
-from networking_vpp.compat import context as n_context
-from networking_vpp.compat import db_context_writer
-from networking_vpp.compat import driver_api
-from networking_vpp.compat import n_exc
-from networking_vpp.db.models import GpeAllocation
+from neutron_lib import context as n_context
+import neutron_lib.exceptions as n_exc
+from neutron_lib.plugins.ml2 import api as driver_api
 
 from neutron.plugins.ml2.drivers import helpers
+
 from oslo_config import cfg
 from oslo_db import exception as db_exc
 from oslo_log import log as logging
 
-from typing import List
-from typing import Set
-from typing import Tuple
+from typing import List, Set, Tuple
 
 LOG = logging.getLogger(__name__)
 

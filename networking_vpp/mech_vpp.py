@@ -24,11 +24,6 @@ from oslo_log import log as logging
 import re
 import time
 
-from networking_vpp.compat import context as n_context
-from networking_vpp.compat import directory
-from networking_vpp.compat import driver_api as api
-from networking_vpp.compat import n_const
-from networking_vpp.compat import portbindings
 from networking_vpp import config_opts
 from networking_vpp import constants as nvpp_const
 from networking_vpp.db import db
@@ -36,9 +31,14 @@ from networking_vpp import etcdutils
 from networking_vpp.ext_manager import ExtensionManager
 from networking_vpp.extension import MechDriverExtensionBase
 
-from networking_vpp.compat import events
-from networking_vpp.compat import registry
-from networking_vpp.compat import resources
+from neutron_lib.api.definitions import portbindings
+from neutron_lib.callbacks import events
+from neutron_lib.callbacks import registry
+from neutron_lib.callbacks import resources
+import neutron_lib.constants as n_const
+from neutron_lib import context as n_context
+from neutron_lib.plugins import directory
+from neutron_lib.plugins.ml2 import api
 
 import neutron.conf.agent.securitygroups_rpc
 

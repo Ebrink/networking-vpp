@@ -21,7 +21,7 @@ import re
 import sys
 
 from networking_vpp.agent import vpp
-from networking_vpp.compat import n_const
+import neutron_lib.constants as n_const
 
 LOG = logging.Logger('test-vpp-content')
 # TODO(ijw): this isn't keeping logs quiet
