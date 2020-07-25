@@ -13,8 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from abc import ABCMeta
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import atexit
 import etcd
 import eventlet
@@ -22,7 +21,6 @@ import eventlet.semaphore
 from oslo_config import cfg
 from oslo_log import log as logging
 import re
-import six
 import time
 import typing  # noqa
 from urllib3.exceptions import TimeoutError as UrllibTimeoutError
@@ -41,8 +39,7 @@ ETC_HOSTS_DELIMITER = ','
 ETC_PORT_HOST_DELIMITER = ':'
 
 
-@six.add_metaclass(ABCMeta)
-class EtcdWriter(object):
+class EtcdWriter(ABC):
 
     @abstractmethod
     def _process_read_value(self, key, value):
@@ -396,8 +393,7 @@ class EtcdElection(object):
             pass
 
 
-@six.add_metaclass(ABCMeta)
-class EtcdWatcher(object):
+class EtcdWatcher(ABC):
     # There's a thread election here because we want to keep the number
     # of equivalent watcher threads down as we are generally running
     # with multiple processes.
@@ -661,7 +657,6 @@ class EtcdWatcher(object):
         # thread probably catches them rather than terminating.
 
 
-@six.add_metaclass(ABCMeta)
 class EtcdChangeWatcher(EtcdWatcher):
     """An etcd watcher framework that notifies only discrete changes
 

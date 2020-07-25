@@ -16,7 +16,6 @@
 import etcd
 import ipaddress
 import re
-import six
 import sys
 
 from networking_vpp.compat import plugin_constants
@@ -37,15 +36,15 @@ LEADIN = nvpp_const.LEADIN
 
 # TODO(onong): move to common file in phase 2
 def ipnet(ip):
-    return ipaddress.ip_network(six.text_type(ip))
+    return ipaddress.ip_network(ip)
 
 
 def ipaddr(ip):
-    return ipaddress.ip_address(six.text_type(ip))
+    return ipaddress.ip_address(ip)
 
 
 def ipint(ip):
-    return ipaddress.ip_interface(six.text_type(ip))
+    return ipaddress.ip_interface(ip)
 
 
 class GPEForwarder(object):

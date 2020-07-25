@@ -22,7 +22,6 @@ import datetime
 import jwt
 from OpenSSL import crypto
 import re
-import six
 
 from networking_vpp._i18n import _
 
@@ -281,20 +280,8 @@ class JWTUtils(object):
             # some others it is type str. A bytes-type object is what the
             # crypto apis expect and hence the following check.
             # TODO(JB): replace with more elegant solution if possible
-            if six.PY3:
-                if type(vcert_str) is str:
-                    vcert_str = bytes(vcert_str, 'ascii')
-            else:
-                # TODO(ijw): why?
-                # ANS(onong): In py2.x, some of the unit tests return vcert_str
-                # as type str while some others return type unicode. Now,
-                # crypto apis expect bytes-like object and for the cases
-                # where vcert_str is type unicode, the tests balk and spew the
-                # following error:
-                #     TypeError: from_buffer() cannot return the address of a
-                #     unicode object
-                # TODO(JB): replace with more elegant solution if possible
-                vcert_str = vcert_str.encode('ascii', 'ignore')
+            if type(vcert_str) is str:
+                vcert_str = bytes(vcert_str, 'ascii')
 
             # TODO(ijw): how does this fail?
             vcert_obj = load_pem_x509_certificate(

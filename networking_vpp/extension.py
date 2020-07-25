@@ -13,8 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import abc
-import six
+from abc import ABC, abstractmethod
 
 
 class HookManager(object):
@@ -47,8 +46,7 @@ class HookManager(object):
         self.hooks[name].append(call)
 
 
-@six.add_metaclass(abc.ABCMeta)
-class ExtensionBase(object):
+class ExtensionBase(ABC):
     def __init__(self):
         self.hooks = HookManager()
 
@@ -66,18 +64,16 @@ class ExtensionBase(object):
         pass
 
 
-@six.add_metaclass(abc.ABCMeta)
 class VPPAgentExtensionBase(ExtensionBase):
 
-    @abc.abstractmethod
+    @abstractmethod
     def run(self, host, client_factory, vpp_forwarder):
         """Begin threads watching etcd."""
         pass
 
 
-@six.add_metaclass(abc.ABCMeta)
 class MechDriverExtensionBase(ExtensionBase):
 
-    @abc.abstractmethod
+    @abstractmethod
     def run(self, communicator):
         pass

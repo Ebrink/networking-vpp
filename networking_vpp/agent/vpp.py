@@ -30,7 +30,6 @@ import os
 from oslo_serialization import jsonutils
 import pkgutil
 import pwd
-import six
 import sys
 from threading import Lock
 # typing is included purely for typechecks and pep8 objects to its inclusion
@@ -49,15 +48,12 @@ def binary_type(s):
 
 
 def mac_to_bytes(mac):
-    # type: (str) -> six.binary_type
+    # type: (str) -> bytes
     # py3 note:
     # TODO(onong): PAPI has introduced a new macaddress object which seemingly
     # takes care of conversion to/from MAC addr to string.
     # TODO(onong): move to common file in phase 2
-    if six.PY2:
-        return ''.join(chr(int(x, base=16)) for x in mac.split(':'))
-    else:
-        return bytes.fromhex(mac.replace(':', ''))
+    return bytes.fromhex(mac.replace(':', ''))
 
 
 def fix_string(s):
@@ -855,9 +851,8 @@ class VPPInterface(object):
         #
         # Note(onong): VPP 20.01 onwards, the ip address needs to be passed as
         # the new vl_api_address_with_prefix_t type which maps to the python
-        # IPv4/IPv6Interface object in PAPI. The six.text_type() is for py2
-        # compatibility.
-        prefix = six.text_type(ip + "/" + str(prefixlen))
+        # IPv4/IPv6Interface object in PAPI.
+        prefix = ip + "/" + str(prefixlen)
         prefix = ipaddress.ip_interface(prefix)
         self.call_vpp('sw_interface_add_del_address',
                       sw_if_index=if_idx, is_add=True,
@@ -868,9 +863,8 @@ class VPPInterface(object):
         #
         # Note(onong): VPP 20.01 onwards, the ip address needs to be passed as
         # the new vl_api_address_with_prefix_t type which maps to the python
-        # IPv4/IPv6Interface object in PAPI. The six.text_type() is for py2
-        # compatibility.
-        prefix = six.text_type(ip + "/" + str(prefixlen))
+        # IPv4/IPv6Interface object in PAPI.
+        prefix = ip + "/" + str(prefixlen)
         prefix = ipaddress.ip_interface(prefix)
         self.call_vpp('sw_interface_add_del_address',
                       sw_if_index=if_idx, is_add=False,
@@ -941,8 +935,8 @@ class VPPInterface(object):
 
         # Is there a next hop address?
         if next_hop_address:
-            address = ipaddress.ip_address(six.text_type(bytes_to_ip(
-                                           next_hop_address, is_ipv6)))
+            address = ipaddress.ip_address(
+                bytes_to_ip(next_hop_address, is_ipv6))
             if not is_ipv6:
                 path['nh'] = {'address': {'ip4': address}}
             else:
@@ -994,15 +988,14 @@ class VPPInterface(object):
         if not self.route_in_vrf(vrf, ip_address, prefixlen,
                                  next_hop_address, next_hop_sw_if_index,
                                  is_ipv6, is_local):
-            ip = ipaddress.ip_address(six.text_type(bytes_to_ip(ip_address,
-                                                    is_ipv6)))
+            ip = ipaddress.ip_address(bytes_to_ip(ip_address, is_ipv6))
             # Note(onong): VPP 19.08 onwards, the destination needs to be in
             # the form of network/prefix, ie, of type ipaddress.IPv4Network
             prefix = ipaddress.ip_network(ip.exploded + "/" + str(prefixlen))
 
             if next_hop_address is not None:
-                next_hop = ipaddress.ip_address(six.text_type(bytes_to_ip(
-                    next_hop_address, is_ipv6)))
+                next_hop = ipaddress.ip_address(
+                    bytes_to_ip(next_hop_address, is_ipv6))
 
             if is_local:
                 self.LOG.debug('Adding a local route %s/%s in router vrf:%s',
@@ -1046,15 +1039,15 @@ class VPPInterface(object):
         if self.route_in_vrf(vrf, ip_address, prefixlen,
                              next_hop_address, next_hop_sw_if_index,
                              is_ipv6, is_local):
-            ip = ipaddress.ip_address(six.text_type(bytes_to_ip(ip_address,
-                                                    is_ipv6)))
+            ip = ipaddress.ip_address(
+                bytes_to_ip(ip_address, is_ipv6))
             # Note(onong): VPP 19.08 onwards, the destination needs to be in
             # the form of network/prefix, ie, of type ipaddress.IPv4Network
             prefix = ipaddress.ip_network(ip.exploded + "/" + str(prefixlen))
 
             if next_hop_address is not None:
-                next_hop = ipaddress.ip_address(six.text_type(bytes_to_ip(
-                    next_hop_address, is_ipv6)))
+                next_hop = ipaddress.ip_address(
+                    bytes_to_ip(next_hop_address, is_ipv6))
 
             if is_local:
                 self.LOG.debug('Deleting a local route %s/%s in router vrf:%s',
@@ -1106,11 +1099,11 @@ class VPPInterface(object):
         # in the VRF table by checking the ip_address, prefixlen and
         # Convert the ip & next_hop addresses to an ipaddress format for
         # comparison
-        ip = ipaddress.ip_address(six.text_type(bytes_to_ip(ip_address,
-                                                is_ipv6)))
+        ip = ipaddress.ip_address(bytes_to_ip(ip_address,
+                                              is_ipv6))
         if next_hop_address is not None:
-            next_hop = ipaddress.ip_address(six.text_type(
-                bytes_to_ip(next_hop_address, is_ipv6)))
+            next_hop = ipaddress.ip_address(
+                bytes_to_ip(next_hop_address, is_ipv6))
         else:
             next_hop = next_hop_address
 
@@ -1200,7 +1193,7 @@ class VPPInterface(object):
         #
         # NB: Use VPP 19.08.1 and above only
 
-        ext_intf_ip = ipaddress.ip_interface(six.text_type(ext_intf_ip))
+        ext_intf_ip = ipaddress.ip_interface(ext_intf_ip)
         # VPP 19.08.1 onwards ip_fib_dump/ip6_fib_dump are replaced by
         # ip_route_dump
         table = {'table_id': vrf, 'is_ip6': is_ipv6}

@@ -21,7 +21,6 @@ import fnmatch
 from networking_vpp import constants as nvpp_const
 import os
 from oslo_serialization import jsonutils
-import six
 from vpp_papi import VPPApiClient
 
 
@@ -41,7 +40,7 @@ class VPPApiManifest(VPPApiClient):
     def get_vpp_api_manifest(self):
         """Generate the VPP API manifest data."""
         data = []
-        for name, msg in six.iteritems(self.messages):
+        for name, msg in self.messages.items():
             n = name + '_' + msg.crc[2:]
             data.append(n)
         return data

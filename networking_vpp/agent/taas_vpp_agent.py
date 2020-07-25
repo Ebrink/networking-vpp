@@ -25,18 +25,17 @@ import neutron.agent.linux.ip_lib as ip_lib
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
-import six
 
 
 LOG = logging.getLogger(__name__)
 
 
 def ipnet(ip):
-    return ip_network(six.text_type(ip))
+    return ip_network(ip)
 
 
 def ipaddr(ip):
-    return ip_address(six.text_type(ip))
+    return ip_address(ip)
 
 
 class TaasServiceAgentWatcher(etcdutils.EtcdChangeWatcher):
@@ -294,11 +293,11 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
     def _create_erspan_tunnel(self, src_adr, dst_adr, session_id):
         """Create a tunnel to a remote destination VTEP."""
-        if ip_network(six.text_type(src_adr)).version == 6:
+        if ip_network(src_adr).version == 6:
             is_ipv6 = 1
         else:
             is_ipv6 = 0
-        if ip_network(six.text_type(dst_adr)).version == 6:
+        if ip_network(dst_adr).version == 6:
             is_ipv6d = 1
         else:
             is_ipv6d = 0
@@ -321,7 +320,7 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
 
     def _delete_erspan_tunnel(self, src_adr, dst_adr, session_id):
         """Remove a VXLAN tunnel from VPP."""
-        if ip_network(six.text_type(src_adr)).version == 6:
+        if ip_network(src_adr).version == 6:
             is_ipv6 = 1
         else:
             is_ipv6 = 0
@@ -397,7 +396,7 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                 esp_src_addr = self.esp_src_addr
                 esp_session_id = data['tap_flow']['erspan_session_id']
                 esp_plen = self.esp_plen
-                if ip_network(six.text_type(esp_dst_addr)).version == 6:
+                if ip_network(esp_dst_addr).version == 6:
                     esp_isv6 = 1
                 else:
                     esp_isv6 = 0

@@ -42,7 +42,6 @@ import ipaddress
 import os
 import re
 import shlex
-import six
 import sys
 import time
 
@@ -143,7 +142,7 @@ def eventlet_lock(name):
 # TODO(ijw): or remove, since py3 doesn't need the unicode fixup.
 def ipnet(ip):
     # type: (str) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
-    return ipaddress.ip_network(six.text_type(ip))
+    return ipaddress.ip_network(ip)
 
 
 def ipnet_loose(ip, pfxlen):
@@ -151,18 +150,18 @@ def ipnet_loose(ip, pfxlen):
     # Will make a network within which this address resides, even
     # if it's not given the network address.
     return ipaddress.ip_network(u'%s/%d' %
-                                (six.text_type(ip), pfxlen), strict=False)
+                                (ip, pfxlen), strict=False)
 
 
 def ipaddr(ip):
     # type: (str) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-    return ipaddress.ip_address(six.text_type(ip))
+    return ipaddress.ip_address(ip)
 
 
 def ipint(ip):
     # type: (str) -> Union[ipaddress.IPv4Interface, ipaddress.IPv6Interface]
     # input: 1.2.3.4/24 e.g.
-    return ipaddress.ip_interface(six.text_type(ip))
+    return ipaddress.ip_interface(ip)
 
 ######################################################################
 
@@ -2116,8 +2115,8 @@ class VPPForwarder(object):
         elif port_id in self.router_external_interfaces:
             router = self.router_external_interfaces[port_id]
             is_external = 1
-            ext_intf_ip = six.u('{}/{}'.format(router['gateway_ip'],
-                                               router['prefixlen']))
+            ext_intf_ip = '{}/{}'.format(router['gateway_ip'],
+                                         router['prefixlen'])
             # Get all local IP addresses in the external VRF belonging
             # to the same external subnet as this router.
             # Check if atleast one local_ip matches a neutron assigned
@@ -2785,7 +2784,7 @@ class EtcdListener(object):
         def _secgroup_rule(r):
             # Create a rule for the remote_ip_prefix (CIDR) value
             if r['remote_ip_addr']:
-                remote_ip_prefixes = [(six.text_type(r['remote_ip_addr']),
+                remote_ip_prefixes = [(r['remote_ip_addr'],
                                        r['ip_prefix_len'])]
             # Create a rule for each ip address in the remote_group
             else:
@@ -2798,7 +2797,7 @@ class EtcdListener(object):
                 # remote-group etcd watch event
                 self.vppf.remote_group_secgroups[remote_group].add(secgroup)
                 remote_ip_prefixes = [
-                    (six.text_type(ip), prefix_length) for port in
+                    (ip, prefix_length) for port in
                     self.vppf.remote_group_ports[remote_group]
                     for ip in self.vppf.port_ips[port]
                     if ipnet(ip).version == ip_version]

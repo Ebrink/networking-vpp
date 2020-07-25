@@ -29,7 +29,6 @@ from networking_vpp.compat import db_context_writer
 from networking_vpp.compat import n_const as constants
 from networking_vpp.compat import n_exc
 from networking_vpp.compat import n_provider as provider
-import six
 
 # TODO(ijw): backward compatibility doesn't really belong here
 try:
@@ -163,7 +162,7 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
         router_dict['subnet_id'] = subnet['id']
         router_dict['fixed_ips'] = fixed_ips
 
-        address = ip_network(six.text_type(subnet['cidr']))
+        address = ip_network(subnet['cidr'])
         router_dict['network_id'] = network['id']
         router_dict['is_ipv6'] = True if address.version == 6 else False
         router_dict['prefixlen'] = address.prefixlen
@@ -239,7 +238,7 @@ class VppL3RouterPlugin(service_base.ServicePluginBase,
             subnet_id = fixed_ip['subnet_id']
             subnet = self._core_plugin.get_subnet(
                 context.elevated(), subnet_id)
-            address = ip_network(six.text_type(subnet['cidr']))
+            address = ip_network(subnet['cidr'])
             is_ipv6 = True if address.version == 6 else False
             gateways.append((fixed_ip['ip_address'],
                              address.prefixlen,

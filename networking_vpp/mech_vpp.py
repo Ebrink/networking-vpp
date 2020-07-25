@@ -13,8 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import abc
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections import namedtuple
 import etcd
 import eventlet
@@ -23,7 +22,6 @@ import os
 from oslo_config import cfg
 from oslo_log import log as logging
 import re
-import six
 import time
 
 from networking_vpp import compat
@@ -368,8 +366,7 @@ class VPPMechanismDriver(api.MechanismDriver):
         self.communicator.kick()
 
 
-@six.add_metaclass(abc.ABCMeta)
-class AgentCommunicator(object):
+class AgentCommunicator(ABC):
 
     @abstractmethod
     def bind(self, port, segment, host, binding_type):

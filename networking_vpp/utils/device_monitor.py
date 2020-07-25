@@ -17,7 +17,6 @@ from __future__ import absolute_import
 import errno
 import logging
 import os
-import six
 import socket
 import struct
 
@@ -329,9 +328,7 @@ class DeviceMonitor(object):
                             # link_name is a bytes object so explicitly convert
                             # to string in case of py3 otherwise we get an
                             # exception.
-                            if six.PY3:
-                                link_name = link_name.decode('ascii')
-                            break
+                            link_name = link_name.decode('ascii')
 
                     if link_name is None:
                         raise Exception(_("Add-link message without if name"))
