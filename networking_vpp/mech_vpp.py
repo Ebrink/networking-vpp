@@ -24,7 +24,6 @@ from oslo_log import log as logging
 import re
 import time
 
-from networking_vpp import compat
 from networking_vpp.compat import context as n_context
 from networking_vpp.compat import directory
 from networking_vpp.compat import driver_api as api
@@ -42,6 +41,8 @@ from networking_vpp.compat import events
 from networking_vpp.compat import registry
 from networking_vpp.compat import resources
 
+import neutron.conf.agent.securitygroups_rpc
+
 from neutron.db import provisioning_blocks
 
 
@@ -55,7 +56,8 @@ class VPPMechanismDriver(api.MechanismDriver):
 
     def initialize(self):
         config_opts.register_vpp_opts(cfg.CONF)
-        compat.register_securitygroups_opts(cfg.CONF)
+        neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(
+            cfg.CONF)
 
         self.allowed_network_types = cfg.CONF.ml2_vpp.network_types
 

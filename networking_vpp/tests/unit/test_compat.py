@@ -16,6 +16,8 @@
 from networking_vpp import compat
 
 from neutron.agent.linux import bridge_lib  # flake8: noqa: N530
+import neutron.conf.agent.securitygroups_rpc
+import neutron.conf.plugins.ml2.config
 from neutron.tests import base  # flake8: noqa: N530
 
 
@@ -29,3 +31,17 @@ class TestMonkeyPatch(base.BaseTestCase):
             'get_log_fail_as_error' in dir(bridge_lib.BridgeDevice))
         self.assertTrue(
             'disable_ipv6' in dir(bridge_lib.BridgeDevice))
+
+
+class TestOptions(base.BaseTestCase):
+    def test_options(self):
+        """Confirm options setting functions are where we left them
+
+        Neutron moved these options functions.  As we removed our
+        compatibility layer that testes for that we added these tests
+        to confirm that they are present where we expect.
+        """
+        self.assertTrue('register_securitygroups_opts' in
+                        dir(neutron.conf.agent.securitygroups_rpc))
+        self.assertTrue('register_ml2_plugin_opts' in
+                        dir(neutron.conf.plugins.ml2.config))

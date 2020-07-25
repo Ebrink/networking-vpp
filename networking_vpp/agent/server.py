@@ -65,13 +65,10 @@ from networking_vpp import version
 from neutron.agent.linux import bridge_lib
 from neutron.agent.linux import ip_lib
 from neutron.agent.linux import utils
-try:
-    # TODO(ijw): TEMPORARY, better fix coming that reverses this
-    from neutron.plugins.ml2 import config
-    assert config
-except ImportError:
-    from neutron.conf.plugins.ml2 import config
-    config.register_ml2_plugin_opts()
+
+import neutron.conf.agent.securitygroups_rpc
+import neutron.conf.plugins.ml2.config
+
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_privsep import priv_context
@@ -3685,8 +3682,9 @@ def main():
 
     setup_privsep()
 
-    compat.register_ml2_base_opts(cfg.CONF)
-    compat.register_securitygroups_opts(cfg.CONF)
+    neutron.conf.plugins.ml2.config.register_ml2_plugin_opts(cfg.CONF)
+    neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(
+        cfg.CONF)
     config_opts.register_vpp_opts(cfg.CONF)
 
     # Pull physnets out of config and interpret them

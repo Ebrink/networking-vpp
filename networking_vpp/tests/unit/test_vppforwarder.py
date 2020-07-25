@@ -25,10 +25,11 @@ from networking_vpp.agent import gpe
 # used for mocking
 import networking_vpp.agent.network_interface  # noqa: F401
 from networking_vpp.agent import server
-from networking_vpp import compat
 from networking_vpp import config_opts
 from networking_vpp import constants
 from networking_vpp.mech_vpp import SecurityGroupRule
+import neutron.conf.agent.securitygroups_rpc
+import neutron.conf.plugins.ml2.config
 from neutron.tests import base
 from oslo_config import cfg
 
@@ -36,8 +37,9 @@ INTERNAL_SEGMENATION_ID = 100
 INTERNAL_SEGMENATION_TYPE = 'vlan'
 INTERNAL_PHYSNET = 'physnet1'
 FIXED_IP_ADDRESS = '192.168.100.10'
-compat.register_ml2_base_opts(cfg.CONF)
-compat.register_securitygroups_opts(cfg.CONF)
+
+neutron.conf.plugins.ml2.config.register_ml2_plugin_opts(cfg.CONF)
+neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(cfg.CONF)
 config_opts.register_vpp_opts(cfg.CONF)
 
 

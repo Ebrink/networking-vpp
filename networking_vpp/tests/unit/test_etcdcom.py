@@ -15,11 +15,11 @@
 from unittest import mock
 
 import etcd
-from networking_vpp import compat
 from networking_vpp.compat import driver_api as api
 from networking_vpp.compat import plugin_constants
 from networking_vpp import config_opts
 from networking_vpp import mech_vpp
+import neutron.conf.agent.securitygroups_rpc
 from neutron.tests import base
 from oslo_config import cfg
 
@@ -75,7 +75,8 @@ class EtcdAgentCommunicatorTestCase(base.BaseTestCase):
         self.client = etcd.Client()
 
         config_opts.register_vpp_opts(cfg.CONF)
-        compat.register_securitygroups_opts(cfg.CONF)
+        neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(
+            cfg.CONF)
 
         def callback(host, port):
             pass

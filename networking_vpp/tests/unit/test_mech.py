@@ -16,21 +16,17 @@
 
 from unittest import mock
 
-from networking_vpp import compat
 from networking_vpp import config_opts
 
 import etcd
 from networking_vpp.compat import driver_api as api
 from networking_vpp.compat import plugin_constants
 from networking_vpp import mech_vpp
-try:
-    # TODO(ijw): TEMPORARY, better fix coming that reverses this
-    from neutron.plugins.ml2 import config
-except ImportError:
-    from neutron.conf.plugins.ml2 import config
-    config.register_ml2_plugin_opts()
+import neutron.conf.agent.securitygroups_rpc
+import neutron.conf.plugins.ml2.config
 from neutron.tests import base
 from neutron.tests.unit.db import test_db_base_plugin_v2
+
 
 from oslo_config import cfg
 
@@ -69,8 +65,9 @@ class VPPMechanismDriverTestCase(
     @mock.patch('etcd.Client')
     @mock.patch('networking_vpp.etcdutils.EtcdClientFactory.client')
     def setUp(self, mock_eventlet, mock_client, mock_make_client):
-        compat.register_ml2_base_opts(cfg.CONF)
-        compat.register_securitygroups_opts(cfg.CONF)
+        neutron.conf.plugins.ml2.config.register_ml2_plugin_opts(cfg.CONF)
+        neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(
+            cfg.CONF)
         config_opts.register_vpp_opts(cfg.CONF)
 
         mock_make_client.side_effect = self.etcd_client
@@ -240,8 +237,9 @@ class VPPMechanismDriverTestCase(
 
 class EtcdAgentCommunicatorTestCases(base.BaseTestCase):
     def setUp(self):
-        compat.register_ml2_base_opts(cfg.CONF)
-        compat.register_securitygroups_opts(cfg.CONF)
+        neutron.conf.plugins.ml2.config.register_ml2_plugin_opts(cfg.CONF)
+        neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(
+            cfg.CONF)
         config_opts.register_vpp_opts(cfg.CONF)
 
         super(EtcdAgentCommunicatorTestCases, self).setUp()
