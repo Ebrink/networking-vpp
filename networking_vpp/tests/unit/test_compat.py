@@ -13,18 +13,19 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from networking_vpp import compat
-
 from neutron.agent.linux import bridge_lib  # flake8: noqa: N530
 import neutron.conf.agent.securitygroups_rpc
 import neutron.conf.plugins.ml2.config
 from neutron.tests import base  # flake8: noqa: N530
 
 
-class TestMonkeyPatch(base.BaseTestCase):
+class TestBridgeFunctions(base.BaseTestCase):
     def test_bridge_lib_compatibility(self):
-        """Test monkey patch applies additional function to the BridgeDevice"""
-        compat.monkey_patch()
+        """Test we're running against a new-ish version of Neutron
+
+        We used to have a compatibility layer for this stuff, but this
+        tests we can do without.
+        """
         self.assertTrue('owns_interface' in dir(bridge_lib.BridgeDevice))
         self.assertTrue('exists' in dir(bridge_lib.BridgeDevice))
         self.assertTrue(

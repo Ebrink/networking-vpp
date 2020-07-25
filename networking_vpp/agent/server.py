@@ -48,7 +48,6 @@ import time
 from networking_vpp.agent import gpe
 from networking_vpp.agent import network_interface
 from networking_vpp.agent import vpp
-from networking_vpp import compat
 from networking_vpp.compat import n_const
 from networking_vpp.compat import net_utils
 from networking_vpp import config_opts
@@ -91,9 +90,6 @@ VppAcl = namedtuple('VppAcl', ['in_idx', 'out_idx'])
 # When False, reverse rules are added by the vpp-agent and
 # VPP does not maintain any session states
 reflexive_acls = True
-
-# Apply monkey patch if necessary
-compat.monkey_patch()
 
 # We use eventlet for everything but threads. Here, we need an eventlet-based
 # locking mechanism, so we call out eventlet specifically rather than using
