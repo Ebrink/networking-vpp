@@ -1676,7 +1676,11 @@ class VPPForwarder(object):
             return None, None
 
     def _delete_external_subinterface(self, floatingip_dict):
-        """Check if the external subinterface can be deleted."""
+        """Check if the external subinterface can be deleted.
+
+        It can be deleted if it still exists and has no more
+        addresses.
+        """
 
         external_physnet = floatingip_dict['external_physnet']
         external_net_type = floatingip_dict['external_net_type']
@@ -1820,23 +1824,24 @@ class VPPForwarder(object):
                 self.gpe.add_local_gpe_mapping(seg_id, loopback_mac)
         # Set the gateway IP address on the BVI interface, if not already set
         addresses = self.vpp.get_interface_ip_addresses(loopback_idx)
-        gw_ip_obj = ipaddr(gateway_ip)
+        gw_ipif = ipaddress.ip_interface((gateway_ip, prefixlen,))
         # Is there another gateway ip_addr set on this external loopback?
         if not is_inside:
-            exists_gateway = any((addr for addr, _ in addresses
-                                  if addr != gw_ip_obj))
+            # Any address other than the one we're thinking of?
+            exists_gateway = any((addr for addr in addresses
+                                  if addr != gw_ipif))
             if exists_gateway:
                 LOG.debug('A router gateway exists on the external network.'
                           'The current router gateway IP: %s will be added as '
-                          'a local VPP route', str(gw_ip_obj))
-        for address in addresses:
-            if address[0] == gw_ip_obj:
-                break
-        else:
+                          'a local VPP route', str(gw_ipif))
+        if gw_ipif not in addresses:
+            # This address is not yet present?
+
             # Add a local VRF route if another external gateway exists
             if not is_inside and exists_gateway:
+
                 is_local = True
-                ip_prefix_length = 32 if gw_ip_obj.version == 4 else 128
+                ip_prefix_length = 32 if gw_ipif.version == 4 else 128
                 # Add a local IP route if it doesn't exist
                 self.vpp.add_ip_route(vrf=vrf,
                                       ip_address=self._pack_address(
@@ -1847,7 +1852,7 @@ class VPPForwarder(object):
                                       is_ipv6=is_ipv6,
                                       is_local=is_local)
             else:
-                self.vpp.set_interface_ip(loopback_idx, gateway_ip, prefixlen)
+                self.vpp.set_interface_ip(loopback_idx, gw_ipif)
 
         router_dict = {
             'segmentation_id': seg_id,
@@ -2163,7 +2168,9 @@ class VPPForwarder(object):
             # Delete the IP address from the BVI.
             if bvi_if_idx is not None:
                 self.vpp.del_interface_ip(
-                    bvi_if_idx, router['gateway_ip'], router['prefixlen'])
+                    bvi_if_idx,
+                    ipaddress.ip_interface((router['gateway_ip'],
+                                            router['prefixlen'],)))
             # Delete the local route
             prefixlen = 128 if router['is_ipv6'] else 32
             self.vpp.delete_ip_route(vrf=router['vrf_id'],
@@ -2174,8 +2181,9 @@ class VPPForwarder(object):
                                      is_ipv6=router['is_ipv6'],
                                      is_local=True)
             if bvi_if_idx is not None:
-                self.vpp.set_interface_ip(bvi_if_idx,
-                                          local_ip, router['prefixlen'])
+                self.vpp.set_interface_ip(
+                    bvi_if_idx,
+                    ipaddress.ip_interface((local_ip, router['prefixlen'],)))
             # Set the router external interface corresponding to the local
             # route as non-local.
             for router in self.router_external_interfaces.values():
@@ -2227,7 +2235,9 @@ class VPPForwarder(object):
                 if len(addresses) > 1:
                     # Dont' delete the BVI, only remove one IP from it
                     self.vpp.del_interface_ip(
-                        bvi_if_idx, router['gateway_ip'], router['prefixlen'])
+                        bvi_if_idx,
+                        ipaddress.ip_interface((router['gateway_ip'],
+                                                router['prefixlen'],)))
                 else:
                     # Last subnet assigned, delete the interface
                     self.vpp.delete_loopback(bvi_if_idx)

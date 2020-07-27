@@ -90,16 +90,13 @@ class GPEForwarder(object):
                   'interface %s', self.gpe_src_cidr, intf)
         (self.gpe_underlay_addr,
          self.gpe_underlay_mask) = self.gpe_src_cidr.split('/')
+
+        gpe_ifaddr = ipaddress.ip_interface(self.gpe_src_cidr)
         physnet_ip_addrs = self.vpp.get_interface_ip_addresses(if_physnet)
         LOG.debug('Exising IP addresses %s', str(physnet_ip_addrs))
-        cidr = (ipaddr(self.gpe_underlay_addr),
-                int(self.gpe_underlay_mask))
-        if cidr not in physnet_ip_addrs:
-            self.vpp.set_interface_ip(
-                if_idx=if_physnet,
-                ip=self.gpe_underlay_addr,
-                prefixlen=int(self.gpe_underlay_mask)
-                )
+        if gpe_ifaddr not in physnet_ip_addrs:
+            self.vpp.set_interface_ip(if_physnet, gpe_ifaddr)
+
         return (intf, if_physnet)
 
     def bridge_idx_for_segment(self, seg_id):

@@ -22,6 +22,7 @@ import ipaddress
 # logging is included purely for typechecks and pep8 objects to its inclusion
 import logging  # noqa
 from networking_vpp import constants as nvpp_const
+from networking_vpp.typing import IPAddress, IPInterface, IPNetwork
 from networking_vpp import vpp_constants as vpp_const
 import os
 # Pep8 check fails, if json is used instead of jsonutils
@@ -30,8 +31,7 @@ import pkgutil
 import pwd
 import sys
 from typing import List, Dict, Optional, Set, Tuple, \
-    Iterator, Type, TypeVar, Callable, Any, cast, Union, \
-    NewType
+    Iterator, Type, TypeVar, Callable, Any, cast, NewType
 import vpp_papi  # type: ignore
 from vpp_papi import VppEnum
 
@@ -55,11 +55,8 @@ lisp_ls_t = dict  # a locator set definition
 lisp_eid_t = dict
 route_path_t = dict
 
-DEFAULT_VRF = vrf_idx_t(0)
 
-IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-IPInterface = Union[ipaddress.IPv4Interface, ipaddress.IPv6Interface]
-IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+DEFAULT_VRF = vrf_idx_t(0)
 
 
 def mac_to_bytes(mac: str) -> bytes:
@@ -761,28 +758,31 @@ class VPPInterface(object):
                              sw_if_index=if_idx).vrf_id
 
     def set_interface_ip(self, if_idx: if_idx_t,
-                         ip: ip_addr_str_t, prefixlen: int) -> None:
-        # Set the interface IP address, usually the subnet's
-        # gateway IP.
-        #
+                         prefix: IPInterface) -> None:
+        """Set the interface's IP address.
+
+        This adds one address to the interface, and includes the
+        subnet scope of the address.
+        """
+
         # Note(onong): VPP 20.01 onwards, the ip address needs to be passed as
         # the new vl_api_address_with_prefix_t type which maps to the python
         # IPv4/IPv6Interface object in PAPI.
-        prefix = ip + "/" + str(prefixlen)
-        prefix = ipaddress.ip_interface(prefix)
         self.call_vpp('sw_interface_add_del_address',
                       sw_if_index=if_idx, is_add=True,
                       del_all=False, prefix=prefix)
 
     def del_interface_ip(self, if_idx: if_idx_t,
-                         ip: ip_addr_str_t, prefixlen: int) -> None:
-        # Delete an ip address from the specified interface
-        #
+                         prefix: IPInterface) -> None:
+        """Remove the interface's IP address.
+
+        This removes one address from the interface, and includes the
+        subnet scope of the address.
+        """
+
         # Note(onong): VPP 20.01 onwards, the ip address needs to be passed as
         # the new vl_api_address_with_prefix_t type which maps to the python
         # IPv4/IPv6Interface object in PAPI.
-        prefix = ip + "/" + str(prefixlen)
-        prefix = ipaddress.ip_interface(prefix)
         self.call_vpp('sw_interface_add_del_address',
                       sw_if_index=if_idx, is_add=False,
                       del_all=False, prefix=prefix)
@@ -1156,14 +1156,14 @@ class VPPInterface(object):
                 # TODO(onong): watch out in py3
                 yield address.exploded
 
+    # TODO(ijw): should be a set; changing it will change the tests
+    # but not the main code.
     def get_interface_ip_addresses(self, sw_if_idx: if_idx_t) \
-        -> List[Tuple[IPAddress, int]]:
-        """Returns a list of all IP addresses assigned to an interface.
+        -> List[IPInterface]:
+        """Get IP addresses assigned to an interface
 
-        This will return both v4 and v6 adressess in a list of tuples
-        that contains the ip address and subnet mask. e.g.
-        [(ipaddress(10.0.0.1), 24), (ipaddress(2001:db8:1234::1), 64)]
-        using types from the ipaddress module.
+        :param sw_if_idx: Interface to check
+        :returns: List of IP interface addresses.
         """
 
         # Note(onong):
@@ -1184,25 +1184,18 @@ class VPPInterface(object):
         # IPv4Interface/IPv6Interface type in Python.
         #
         # NB: Use VPP 19.08.1 and above only
-        int_addrs = []
+        addrs = []
         v4_addrs = self.call_vpp('ip_address_dump', sw_if_index=sw_if_idx,
                                  is_ipv6=False)
         for v4_addr in v4_addrs:
-            # VPP 19.08.1 and onwards PAPI returns IPv4Interface object
-            sanitized_v4 = v4_addr.prefix.ip
-            prefix_len = v4_addr.prefix.network.prefixlen
-            # The standard library has ipinterface, but it's hard
-            # to construct with a numeric netmask
-            int_addrs.append((sanitized_v4, prefix_len))
+            addrs.append(v4_addr.prefix)
 
         v6_addrs = self.call_vpp('ip_address_dump', sw_if_index=sw_if_idx,
                                  is_ipv6=True)
         for v6_addr in v6_addrs:
-            # VPP 19.08.1 and onwards PAPI returns IPv6Interface object
-            sanitized_v6 = v6_addr.prefix.ip
-            prefix_len = v6_addr.prefix.network.prefixlen
-            int_addrs.append((sanitized_v6, prefix_len))
-        return int_addrs
+            addrs.append(v6_addr.prefix)
+
+        return addrs
 
     ########################################
 

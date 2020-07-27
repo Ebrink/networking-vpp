@@ -206,7 +206,8 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
         self.esp_src_cidr = cfg.CONF.ml2_vpp.esp_src_cidr
         if self.esp_src_cidr is not None and self.esp_src_cidr != '':
             (self.esp_src_addr,
-             self.esp_plen) = self.esp_src_cidr.split('/')
+             esp_plen) = self.esp_src_cidr.split('/')
+        self.esp_plen = int(esp_plen)
 
         # Name of the ERspan physnet
         self.esp_physnet = cfg.CONF.ml2_vpp.esp_physnet
@@ -242,13 +243,11 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                   'interface %s', self.esp_src_cidr, intf)
         physnet_ip_addrs = self.vppf.vpp.get_interface_ip_addresses(if_physnet)
         LOG.debug('Exising IP addresses %s', str(physnet_ip_addrs))
-        cidr = (ipaddr(self.esp_src_addr),
-                int(self.esp_plen))
-        if cidr not in physnet_ip_addrs:
+        if ip_interface((self.esp_src_addr, self.esp_plen)) \
+           not in physnet_ip_addrs:
             self.vppf.vpp.set_interface_ip(
                 if_physnet,
-                self.esp_src_addr,
-                self.esp_plen
+                ip_interface((self.esp_src_addr, self.esp_plen,))
                 )
         return (intf, if_physnet)
 
@@ -395,7 +394,6 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                 network_type = 'vlan'
                 esp_src_addr = self.esp_src_addr
                 esp_session_id = data['tap_flow']['erspan_session_id']
-                esp_plen = self.esp_plen
                 if ip_network(esp_dst_addr).version == 6:
                     esp_isv6 = 1
                 else:
@@ -439,14 +437,13 @@ class TaasFlowAgentWatcher(etcdutils.EtcdChangeWatcher):
                         self.vppf.vpp.set_interface_vrf(loop_idx, 0, esp_isv6)
                         self.vppf.vpp.set_interface_ip(
                             loop_idx,
-                            esp_src_addr,
-                            int(esp_plen))
-                        esp_inet = ip_interface(
-                            '%s/%s' % (esp_dst_addr, esp_plen))
+                            ip_interface((self.esp_src_addr, self.esp_plen,))
+                        )
+                        esp_inet = ip_interface((esp_dst_addr, self.esp_plen,))
                         esp_net = ("%s" % (esp_inet.network)).split('/')[0]
                         self.vppf.vpp.add_ip_route(
                             0, self.vppf._pack_address(esp_net),
-                            int(esp_plen), None, loop_idx, esp_isv6, False)
+                            self.esp_plen, None, loop_idx, esp_isv6, False)
                         self.vppf.vpp.ifup(loop_idx)
 
                 # Activate the ERspan tunnel

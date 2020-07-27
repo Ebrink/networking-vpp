@@ -19,8 +19,7 @@ from unittest.mock import patch
 import uuid as uuidgen
 sys.modules['vpp_papi'] = mock.MagicMock()
 sys.modules['vpp'] = mock.MagicMock()
-from ipaddress import ip_address
-from ipaddress import IPv4Address
+from ipaddress import ip_address, ip_interface
 from networking_vpp.agent import gpe
 # used for mocking
 import networking_vpp.agent.network_interface  # noqa: F401
@@ -41,6 +40,10 @@ FIXED_IP_ADDRESS = '192.168.100.10'
 neutron.conf.plugins.ml2.config.register_ml2_plugin_opts(cfg.CONF)
 neutron.conf.agent.securitygroups_rpc.register_securitygroups_opts(cfg.CONF)
 config_opts.register_vpp_opts(cfg.CONF)
+
+
+def iface(addr, pfx):
+    return ip_interface((addr, int(pfx),))
 
 
 class VPPForwarderTestCase(base.BaseTestCase):
@@ -508,7 +511,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
             self.vpp.vpp.set_interface_vrf.assert_called_once_with(
                 loopback_idx, router['vrf_id'], router['is_ipv6'])
             self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                loopback_idx, router['gateway_ip'], router['prefixlen'])
+                loopback_idx,
+                iface(router['gateway_ip'], router['prefixlen']))
 
     @mock.patch(
         'networking_vpp.agent.network_interface.NetworkDriverManager.' +
@@ -522,8 +526,9 @@ class VPPForwarderTestCase(base.BaseTestCase):
                                return_value=5):
             with mock.patch.object(
                 self.vpp.vpp, 'get_interface_ip_addresses',
-                return_value=[(ip_address(router['gateway_ip']),
-                               router['prefixlen'])]):
+                return_value=[
+                    iface(router['gateway_ip'], router['prefixlen'])
+                ]):
                 with mock.patch.object(self.vpp.vpp, 'get_interface_vrf',
                                        return_value=[]):
                     self.vpp.ensure_router_interface_on_host(port, router)
@@ -552,7 +557,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     self.vpp.vpp.set_loopback_bridge_bvi.assert_not_called()
                     self.vpp.vpp.set_interface_vrf.assert_not_called()
                     self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                        5, router['gateway_ip'], router['prefixlen'])
+                        5,
+                        iface(router['gateway_ip'], router['prefixlen']))
 
     @mock.patch(
         'networking_vpp.agent.network_interface.NetworkDriverManager.' +
@@ -575,7 +581,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.get_snat_interfaces.return_value = [5]
         self.vpp.vpp.get_bridge_bvi.return_value = 5
         self.vpp.vpp.get_interface_ip_addresses.return_value = [
-            (ip_address(gateway_ip), prefixlen)]
+            iface(gateway_ip, prefixlen)
+        ]
         self.vpp.delete_router_interface_on_host(port)
         self.vpp.vpp.set_snat_on_interface.assert_called_once_with(
             5, is_add=False, is_inside=True)
@@ -604,14 +611,13 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.get_snat_interfaces.return_value = [5]
         self.vpp.vpp.get_bridge_bvi.return_value = 5
         self.vpp.vpp.get_interface_ip_addresses.return_value = [
-            (ip_address(gateway_ip), prefixlen),
-            (ip_address(second_gateway_ip),
-             second_gateway_prefixlen)]
+            iface(gateway_ip, prefixlen),
+            iface(second_gateway_ip, second_gateway_prefixlen)]
 
         self.vpp.delete_router_interface_on_host(port)
         self.vpp.vpp.delete_loopback.assert_not_called()
         self.vpp.vpp.del_interface_ip.assert_called_once_with(
-            5, gateway_ip, prefixlen)
+            5, iface(gateway_ip, prefixlen))
 
     @mock.patch(
         'networking_vpp.agent.network_interface.NetworkDriverManager.' +
@@ -630,7 +636,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                 self.vpp.vpp.set_snat_on_interface.assert_called_once_with(
                     5, 0)
                 self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                    5, router['gateways'][0][0], router['gateways'][0][1])
+                    5,
+                    iface(router['gateways'][0][0], router['gateways'][0][1]))
 
     @mock.patch(
         'networking_vpp.agent.network_interface.NetworkDriverManager.' +
@@ -647,7 +654,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                     uuidgen.uuid1(), router)
                 self.vpp.vpp.set_snat_on_interface.assert_not_called()
                 self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                    5, router['gateways'][0][0], router['gateways'][0][1])
+                    5,
+                    iface(router['gateways'][0][0], router['gateways'][0][1]))
 
     @mock.patch(
         'networking_vpp.agent.network_interface.NetworkDriverManager.' +
@@ -669,7 +677,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         uuidgen.uuid1(), router)
                     self.vpp.vpp.set_snat_on_interface.assert_not_called()
                     self.vpp.vpp.set_interface_ip.assert_called_once_with(
-                        5, interface_ip, prefixlen)
+                        5, iface(interface_ip, prefixlen))
 
     @mock.patch(
         'networking_vpp.agent.network_interface.NetworkDriverManager.' +
@@ -686,8 +694,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                                    return_value=[5]):
                 with mock.patch.object(
                     self.vpp.vpp, 'get_interface_ip_addresses',
-                        return_value=[(ip_address(interface_ip),
-                                       prefixlen)]):
+                        return_value=[
+                            iface(ip_address(interface_ip), prefixlen)]):
                     self.vpp.ensure_router_interface_on_host(
                         uuidgen.uuid1(), router)
                     self.vpp.vpp.set_snat_on_interface.assert_not_called()
@@ -706,8 +714,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         self.vpp.vpp,
                         'get_interface_ip_addresses',
                         return_value=[
-                            (ip_address(router_port['gateway_ip']),
-                             router_port['prefixlen'])]):
+                            iface(ip_address(router_port['gateway_ip']),
+                                  router_port['prefixlen'])]):
                     with mock.patch.object(self.vpp.vpp,
                                            'get_bridge_bvi',
                                            return_value=router_port[
@@ -737,10 +745,9 @@ class VPPForwarderTestCase(base.BaseTestCase):
                         return_value=router_port['bvi_if_idx']):
                     with mock.patch.object(
                         self.vpp.vpp, 'get_interface_ip_addresses',
-                        return_value=[(
-                            ip_address(
-                                router_port['gateway_ip']),
-                            router_port['prefixlen'])]):
+                        return_value=[
+                            iface(router_port['gateway_ip'],
+                                  router_port['prefixlen'])]):
                         self.vpp.delete_router_interface_on_host(port_id)
                         self.vpp.vpp.set_snat_on_interface.\
                             assert_not_called()
@@ -938,9 +945,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.add_lisp_vni_to_bd_mapping.assert_called_once_with(
             vni=5000, bridge_domain=70000)
         self.vpp.vpp.set_interface_ip.assert_called_once_with(
-            if_idx=720,
-            ip="10.1.1.1",
-            prefixlen=24)
+            720,
+            ip_interface("10.1.1.1/24"))
         self.vpp.vpp.set_interface_tag.assert_called_with(
             720, 'net-vpp.physnet:test_net')
         network_data = self.net_driver.get_network('test_net', 'gpe', 5000)
@@ -1138,7 +1144,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             self.vpp.vpp.\
                 add_lisp_arp_entry.assert_called_once_with(
                     'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                    IPv4Address('10.1.1.2').packed)
+                    ip_address('10.1.1.2').packed)
 
     @mock.patch('networking_vpp.agent.gpe.GpeListener')
     @mock.patch('networking_vpp.agent.server.EtcdListener')
@@ -1217,7 +1223,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.\
             replace_lisp_arp_entry.assert_called_once_with(
                 'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                IPv4Address('10.1.1.2').packed)
+                ip_address('10.1.1.2').packed)
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.acl_add_replace_on_host')
