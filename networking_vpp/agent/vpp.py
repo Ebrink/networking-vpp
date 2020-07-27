@@ -35,15 +35,6 @@ import vpp_papi  # type: ignore
 from vpp_papi import VppEnum
 
 
-def binary_type(s):
-    # type: (str) -> bytes
-    """Wrapper function to convert input string to bytes
-
-    TODO(onong): move to a common file in phase 2
-    """
-    return s.encode('ascii')
-
-
 def mac_to_bytes(mac):
     # type: (str) -> bytes
     # py3 note:
