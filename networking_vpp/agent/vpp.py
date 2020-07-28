@@ -16,7 +16,6 @@
 
 from __future__ import absolute_import
 import collections
-import enum
 import fnmatch
 import grp
 import ipaddress
@@ -30,7 +29,6 @@ from oslo_serialization import jsonutils
 import pkgutil
 import pwd
 import sys
-from threading import Lock
 # typing is included purely for typechecks and pep8 objects to its inclusion
 from typing import List, Dict, Optional, Set, Tuple, Iterator  # noqa
 import vpp_papi  # type: ignore
@@ -137,41 +135,25 @@ class VPPInterface(object):
         self,
         log,  # type: logging.Logger
         vpp_cmd_queue_len=None,  # type: Optional[int]
-        lock_type=Lock):
-        # lock_type is threading.Lock.  We need this here because
-        # regardless of the model that the rest of the program uses
-        # our vpp library spawns an independent thread and needs to lock
-        # messaging queues.  Eventlet, however, removes our ability
-        # to access conventional threading locks, and in this case we might
-        # want to use something other than what threading.Lock appears to be.
+        ):
         self.LOG = log
         jsonfiles = []
         for root, dirnames, filenames in os.walk('/usr/share/vpp/api/'):
             for filename in fnmatch.filter(filenames, '*.api.json'):
                 jsonfiles.append(os.path.join(root, filename))
 
-        self._vpp = vpp_papi.VPP(jsonfiles)
-
-        # Sometimes a callback fires unexpectedly.  We need to catch them
-        # because vpp_papi will traceback otherwise
-        self._vpp.register_event_callback(self._queue_cb)
-
-        # TODO(ijw) needs better type
-        self.registered_callbacks = {}  # type: dict
-        for event in self.CallbackEvents:
-            self.registered_callbacks[event] = []
-
-        # NB: a real threading lock
-        self.event_q_lock = lock_type()  # type: object
-        self.event_q = []  # type: List[dict]
+        # NB(onong):
+        # The async_thread param tells PAPI whether to spawn the thread
+        # which invokes the user registered callback and it is set to True by
+        # default. Since we use synchronous mode for the API calls we should
+        # be setting it to False.
+        self._vpp = vpp_papi.VPP(jsonfiles, async_thread=False)
 
         args = {}
-
         if vpp_cmd_queue_len is not None:
             args['rx_qlen'] = vpp_cmd_queue_len
 
-        self._vpp.connect("python-VPPInterface",
-                          **args)
+        self._vpp.connect("python-VPPInterface", **args)
         # VPP API manifest and API whitelist
         message_table, self.api_whitelist = get_api_messages()
         if not message_table or not self.api_whitelist:
@@ -443,90 +425,6 @@ class VPPInterface(object):
     #         if vhost.sw_if_index == iface_idx:
     #             return True
     #     return False
-
-    ########################################
-
-    ########################################
-
-    class CallbackEvents(enum.Enum):
-        """Enum of possible events from vpp.
-
-        This enum is constructed as a 2 tuple, containing:
-        - the name of the method to call, assuming all want_* methods
-          will have the following prototype: want_*(enable, pid)
-        - the returned type name, which is used to forward the event
-          to the appropriate callback.
-        """
-        INTERFACE = ('want_interface_events',
-                     'sw_interface_set_flags')
-        STATISTICS = ('want_stats',
-                      'vnet_interface_counters')
-        OAM = ('want_oam_events',
-               'oam_event')
-
-    # Make a static lookup of message type -> event type
-    callback_lookup = {}
-    for event in CallbackEvents:
-        (unused, event_msg_name) = event.value
-        callback_lookup[event_msg_name] = event
-
-    def _queue_cb(self, msg_name, data):
-        """Queue a received callback
-
-        This is used from the callback of VPP.  In the callback,
-        the VPP library holds a lock on the response queue from
-        the VPP binary, and pretty much prevents anything else
-        from proceeding.  It's important that we get out of the
-        way as soon as possible and absolutely don't process
-        any VPP calls in the callback, so we queue the
-        message for later processing and return immediately.
-
-        NB: This is called in a Python thread and not an eventlet
-        thread - it is critical that event_q_lock is *not*
-        monkeypatched, as the eventlet version won't be able
-        to schedule another greenthread if it blocks.
-        """
-
-        with self.event_q_lock:
-            self.event_q.append((msg_name, data,))
-
-    def _fire_cb(self, msg_name, data):
-        """VPP callback.
-
-        Fires event listeners registered with this class for
-        the type of event received.
-
-        This is called directly by VPP, and thus appears to be in
-        another Python thread (not eventlet) context.
-
-        - msg_name: name of the message type
-        - data: the data within the message
-        """
-        event = self.callback_lookup.get(msg_name)
-        # Ignore unknown callbacks
-        if event is not None:
-            for callback in self.registered_callbacks[event]:
-                callback(data)
-
-    def register_for_events(self, event, target):
-        if target in self.registered_callbacks[event]:
-            raise Exception(_('Target {1} already registered for Event {2}'),
-                            str(target), str(event))
-        self.registered_callbacks[event].append(target)
-        if len(self.registered_callbacks[event]) == 1:
-            (method_name, event_cls) = event.value
-            if method_name is not None:
-                self.call_vpp(method_name, enable_disable=1, pid=os.getpid())
-
-    def unregister_for_event(self, event, target):
-        if target not in self.registered_callbacks[event]:
-            raise Exception(_('Target {1} not registered for Event {2}'),
-                            str(target), str(event))
-        self.registered_callbacks[event].remove(target)
-        if len(self.registered_callbacks[event]) == 0:
-            (method_name, event_cls) = event.value
-            if method_name is not None:
-                self.call_vpp(method_name, enable_disable=0, pid=os.getpid())
 
     ########################################
 

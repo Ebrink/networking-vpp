@@ -25,12 +25,6 @@
 from __future__ import absolute_import
 # eventlet must be monkey patched early or we confuse urllib3.
 import eventlet
-
-# We actually need to co-operate with a threaded callback in VPP, so
-# we preserve the original threading.Lock type
-
-from threading import Lock
-real_thread_lock = Lock
 eventlet.monkey_patch()
 
 import binascii
@@ -345,8 +339,7 @@ class VPPForwarder(object):
                  physnets,  # physnet_name: interface-name
                  mac_age,
                  vpp_cmd_queue_len=None):
-        self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len,
-                                    lock_type=real_thread_lock)
+        self.vpp = vpp.VPPInterface(LOG, vpp_cmd_queue_len)
 
         self.net_driver = network_interface.NetworkDriverManager(self)
         self.physnets = physnets
