@@ -297,7 +297,7 @@ class JWTUtils(object):
             # Unpack the JWT to its raw data
             jwtok = sgn_value.get("jwt", "")
             # ("" is an invalid token)
-            dval = jwt.decode(jwtok, vpublic_key, algorithm='RS256')
+            dval = jwt.decode(jwtok, vpublic_key, algorithms='RS256')
 
             # Check the ancillary tags of the raw data
             self._check_path(dval, path)
