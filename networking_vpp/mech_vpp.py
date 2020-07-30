@@ -592,9 +592,9 @@ class EtcdAgentCommunicator(AgentCommunicator, JournalManager):
 
         registry.subscribe(self.start_threads,
                            resources.PROCESS,
-                           events.AFTER_INIT)
+                           events.AFTER_SPAWN)
 
-    def start_threads(self, resource, event, trigger):
+    def start_threads(self, resource, event, trigger, payload=None):
         LOG.debug('Starting background threads for Neutron worker')
         self.return_thread = self.make_return_worker()
         self.forward_thread = self.make_forward_worker()
