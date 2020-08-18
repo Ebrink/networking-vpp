@@ -1132,6 +1132,7 @@ class VPPForwarder(object):
                                  'protocol',
                                  'port_min',
                                  'port_max'])
+        TODO(ijw): is_ipv6 appears to be the v6-ness of remote_ip_addr
         d - Direction:  0 ==> ingress, 1 ==> egress
         Default == 2
         Return: VPP-formatted ACL Rule
@@ -1146,18 +1147,27 @@ class VPPForwarder(object):
         else:
             a = 1  # Disable reflexive for other traffic such as ICMP etc.
         acl_rule['is_permit'] = a
-        acl_rule['is_ipv6'] = r.is_ipv6
         acl_rule['proto'] = r.protocol
         # for ingress: secgroup remote_ip == Source IP
         # for egress: secgroup remote_ip == Destination IP
         # Port ranges are always destination port ranges for TCP/UDP
         # Set source port range to permit all ranges from 0 to 65535
         if d == 0:
-            acl_rule['src_ip_addr'] = r.remote_ip_addr
-            acl_rule['src_ip_prefix_len'] = r.ip_prefix_len
+            # OpenStack may provide an interface with subnet (i.e. an
+            # address *on* a network and not an address *of* the
+            # network).  VPP requires the network address.
+            acl_rule['src_prefix'] = \
+                ip_interface((r.remote_ip_addr, r.ip_prefix_len,)).network
+            acl_rule['dst_prefix'] = \
+                ip_network("::/0" if r.is_ipv6 else "0.0.0.0/0")
         else:
-            acl_rule['dst_ip_addr'] = r.remote_ip_addr
-            acl_rule['dst_ip_prefix_len'] = r.ip_prefix_len
+            acl_rule['src_prefix'] = \
+                ip_network("::/0" if r.is_ipv6 else "0.0.0.0/0")
+            # OpenStack may provide an interface with subnet (i.e. an
+            # address *on* a network and not an address *of* the
+            # network).  VPP requires the network address.
+            acl_rule['dst_prefix'] = \
+                ip_interface((r.remote_ip_addr, r.ip_prefix_len,)).network
         # Handle ICMP/ICMPv6
         if r.protocol in [1, 58]:
             if r.port_min == -1:  # All ICMP Types and Codes [0-255]
@@ -1203,19 +1213,11 @@ class VPPForwarder(object):
         acl_rule = {}
         # 1 == Permit rule and 0 == deny rule
         acl_rule['is_permit'] = r['is_permit']
-        acl_rule['is_ipv6'] = r['is_ipv6']
         acl_rule['proto'] = r['proto']
         # All TCP/UDP IPv4 and IPv6 traffic
         if r['proto'] in [6, 17, 0]:
-            if r.get('dst_ip_addr'):  # r is an egress Rule
-                acl_rule['src_ip_addr'] = r['dst_ip_addr']
-                acl_rule['src_ip_prefix_len'] = r['dst_ip_prefix_len']
-            elif r.get('src_ip_addr'):  # r is an ingress Rule
-                acl_rule['dst_ip_addr'] = r['src_ip_addr']
-                acl_rule['dst_ip_prefix_len'] = r['src_ip_prefix_len']
-            else:
-                LOG.error("Invalid rule %s to be reversed", r)
-                return {}
+            acl_rule['src_prefix'] = r['dst_prefix']
+            acl_rule['dst_prefix'] = r['src_prefix']
             # Swap port range values
             acl_rule['srcport_or_icmptype_first'] = \
                 r['dstport_or_icmpcode_first']
@@ -1490,36 +1492,16 @@ class VPPForwarder(object):
             """Pack a mac_address into binary."""
             return binascii.unhexlify(mac_address.replace(':', ''))
 
-        def _get_ip_version(ip):
-            """Return the IP Version i.e. 4 or 6"""
-            return ip_network(ip).version
-
-        def _get_ip_prefix_length(ip):
-            """Return the IP prefix length value
-
-            Arguments:-
-            ip - An ip IPv4 or IPv6 address (or) an IPv4 or IPv6 Network with
-                 a prefix length
-            If "ip" is an ip_address return its max_prefix_length
-            i.e. 32 if IPv4 and 128 if IPv6
-            if "ip" is an ip_network return its prefix_length
-            """
-            return ip_network(ip).prefixlen
-
         src_mac_mask = _pack_mac('FF:FF:FF:FF:FF:FF')
         mac_ip_rules = []
         for mac, ip in mac_ips:  # ip can be an address (or) a network/prefix
-            ip_version = _get_ip_version(ip)
-            is_ipv6 = 1 if ip_version == 6 else 0
-            ip_prefix = _get_ip_prefix_length(ip)
+            # TODO(ijw): is it ever an interface rather than a network address?
             # This is the struct the VPP API accepts: note the packed address
             mac_ip_rules.append(
                 {'is_permit': 1,
-                 'is_ipv6': is_ipv6,
                  'src_mac': _pack_mac(mac),
                  'src_mac_mask': src_mac_mask,
-                 'src_ip_addr': self._pack_address(ip),
-                 'src_ip_prefix_len': ip_prefix})
+                 'src_prefix': ip_network(ip)})
         # get the current mac_ip_acl on the port if_any
         port_mac_ip_acl = None
         try:
@@ -2369,11 +2351,8 @@ class VPPForwarder(object):
         egress_rules = a list of egress rules
         """
         def _compose_rule(is_permit,
-                          is_ipv6,
-                          src_ip_addr,
-                          src_ip_prefix_len,
-                          dst_ip_addr,
-                          dst_ip_prefix_len,
+                          src_prefix,
+                          dst_prefix,
                           proto,
                           srcport_or_icmptype_first,
                           srcport_or_icmptype_last,
@@ -2384,11 +2363,8 @@ class VPPForwarder(object):
                 is_permit = 2
             return {
                 'is_permit': is_permit,
-                'is_ipv6': is_ipv6,
-                'src_ip_addr': self._pack_address(src_ip_addr),
-                'src_ip_prefix_len': src_ip_prefix_len,
-                'dst_ip_addr': self._pack_address(dst_ip_addr),
-                'dst_ip_prefix_len': dst_ip_prefix_len,
+                'src_prefix': ip_network(src_prefix),
+                'dst_prefix': ip_network(dst_prefix),
                 'proto': proto,
                 'srcport_or_icmptype_first': srcport_or_icmptype_first,
                 'srcport_or_icmptype_last': srcport_or_icmptype_last,
@@ -2400,9 +2376,9 @@ class VPPForwarder(object):
         #  UDP src_port 67 (ipv4 dhcp server) and dst_port 68 (dhclient)
         #  UDP src_port 547 (ipv6 dhserver) and dst_port 546 (ipv6 dclient)
         ingress_rules = [
-            _compose_rule(1, 0, '0.0.0.0', 0, '0.0.0.0', 0,
+            _compose_rule(1, '0.0.0.0/0', '0.0.0.0/0',
                           17, 67, 67, 68, 68),
-            _compose_rule(1, 1, '::', 0, '::', 0,
+            _compose_rule(1, '::/0', '::/0',
                           17, 547, 547, 546, 546),
             ]
         # Allow Icmpv6 Multicast listener Query, Report, Done (130,131,132)
@@ -2411,7 +2387,7 @@ class VPPForwarder(object):
         ICMP_RA = n_const.ICMPV6_TYPE_RA
         for ICMP_TYPE in [130, 131, 132, 135, 136, 143, ICMP_RA]:
             ingress_rules.append(
-                _compose_rule(1, 1, '::', 0, '::', 0,
+                _compose_rule(1, '::/0', '::/0',
                               58, ICMP_TYPE, ICMP_TYPE, 0, 255)
                 )
         # Egress spoof_filter rules from VM
@@ -2440,26 +2416,26 @@ class VPPForwarder(object):
         # For UDPv4/v6, we do have a permit rule of DHCPv4/v6, so we are good;
         # For ICMPv6, we are adding a dummy permit rule to workaround this;
         egress_rules = [
-            _compose_rule(1, 0, '0.0.0.0', 0, '0.0.0.0', 0,
+            _compose_rule(1, '0.0.0.0/0', '0.0.0.0/0',
                           17, 68, 68, 67, 67),
-            _compose_rule(1, 1, '::', 0, '::', 0,
+            _compose_rule(1, '::/0', '::/0',
                           17, 546, 546, 547, 547),
-            _compose_rule(0, 0, '0.0.0.0', 0, '0.0.0.0', 0,
+            _compose_rule(0, '0.0.0.0/0', '0.0.0.0/0',
                           17, 67, 67, 68, 68),
-            _compose_rule(0, 1, '::', 0, '::', 0,
+            _compose_rule(0, '::/0', '::/0',
                           17, 547, 547, 546, 546),
             # Permits ICMPv6 fragments while not permitting (valid)
             # packets (type 0 is invalid)
-            _compose_rule(1, 1, '::', 0, '::', 0,
+            _compose_rule(1, '::/0', '::/0',
                           58, 0, 0, 0, 0),
             # ... because this rule would otherwise match fragments, being
             # the first rule, and would deny them
-            _compose_rule(0, 1, '::', 0, '::', 0,
+            _compose_rule(0, '::/0', '::/0',
                           58, ICMP_RA, ICMP_RA, 0, 255),
-            _compose_rule(1, 1, '::', 0, '::', 0,
+            _compose_rule(1, '::/0', '::/0',
                           58, 0, 255, 0, 255),
             # Permit TCP port 80 traffic to 169.254.169.254/32 for metadata
-            _compose_rule(1, 0, '0.0.0.0', 0, '169.254.169.254', 32,
+            _compose_rule(1, '0.0.0.0/0', '169.254.169.254/32',
                           6, 0, 65535, 80, 80),
             ]
 
