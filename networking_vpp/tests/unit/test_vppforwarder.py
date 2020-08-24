@@ -1115,11 +1115,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
                 'sw_if_idxs': set()},
                 'remote_map': {}}
             self.vpp.vpp.exists_lisp_arp_entry.return_value = False
-            remote_locator = {"is_ip4": 1,
-                              "priority": 1,
-                              "weight": 1,
-                              "addr": self.vpp._pack_address("1.1.1.1")
-                              }
+            underlay_ip_str = '1.1.1.1'
+            underlay_ip = ip_address(underlay_ip_str)
             gpe.GpeWatcher(mock_etcd_client,
                            'gpe_watcher',
                            mock_gpe_key,
@@ -1129,15 +1126,15 @@ class VPPForwarderTestCase(base.BaseTestCase):
                                                  mock_gpe_key,
                                                  mock_remote_ip)
             self.vpp.gpe.ensure_remote_gpe_mapping(1077, 'fa:16:3e:47:2e:3c',
-                                                   '10.1.1.2', '1.1.1.1')
+                                                   '10.1.1.2', underlay_ip_str)
             self.vpp.vpp.\
                 add_lisp_remote_mac.assert_called_once_with(
-                    'fa:16:3e:47:2e:3c', 1077, remote_locator)
+                    'fa:16:3e:47:2e:3c', 1077, underlay_ip)
             self.assertIn(('fa:16:3e:47:2e:3c', 1077),
                           self.vpp.gpe.gpe_map['remote_map'])
             self.assertEqual(
                 self.vpp.gpe.gpe_map['remote_map'][('fa:16:3e:47:2e:3c',
-                                                    1077)], "1.1.1.1")
+                                                    1077)], underlay_ip_str)
             self.vpp.vpp.\
                 add_lisp_arp_entry.assert_called_once_with(
                     'fa:16:3e:47:2e:3c', mock_bridge_domain,
@@ -1203,23 +1200,20 @@ class VPPForwarderTestCase(base.BaseTestCase):
                                                 'sw_if_idxs': set()},
                                 'remote_map': {}}
         self.vpp.vpp.exists_lisp_arp_entry.return_value = True
-        remote_locator = {"is_ip4": 1,
-                          "priority": 1,
-                          "weight": 1,
-                          "addr": self.vpp._pack_address("1.1.1.1")
-                          }
+        underlay_ip_str = '1.1.1.1'
+        underlay_ip = ip_address(underlay_ip_str)
         self.vpp.gpe.ensure_remote_gpe_mapping(1077, 'fa:16:3e:47:2e:3c',
-                                               '10.1.1.2', '1.1.1.1')
+                                               '10.1.1.2', underlay_ip_str)
         self.vpp.vpp.\
             add_lisp_remote_mac.assert_called_once_with(
-                'fa:16:3e:47:2e:3c', 1077, remote_locator)
+                'fa:16:3e:47:2e:3c', 1077, underlay_ip)
         self.assertIn(('fa:16:3e:47:2e:3c', 1077),
                       self.vpp.gpe.gpe_map['remote_map'])
         self.assertEqual(
             self.vpp.gpe.gpe_map['remote_map'][('fa:16:3e:47:2e:3c', 1077)],
             "1.1.1.1")
         self.vpp.gpe.ensure_remote_gpe_mapping(1077, 'fa:16:3e:47:2e:3c',
-                                               '10.1.1.2', '1.1.1.1')
+                                               '10.1.1.2', underlay_ip_str)
         self.vpp.vpp.\
             replace_lisp_arp_entry.assert_called_once_with(
                 'fa:16:3e:47:2e:3c', mock_bridge_domain,

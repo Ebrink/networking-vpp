@@ -1399,32 +1399,41 @@ class VPPInterface(object):
                       vni=vni)
 
     def add_lisp_remote_mac(self, mac: mac_t, vni: vni_t,
-                            underlay: ip_addr_t) -> None:
+                            remote_ip: IPAddress) -> None:
         """Add a LISP entry for a remote mac address to the underlay IP.
 
         Arguments:-
         mac - remote mac_address
         vni - virtual network identifier
-        underlay - An underlay IP represented within a dict. as below:
-                           {"is_ip4": <value>,
-                           "priority": <priority>,
-                           "weight": <weight>,
-                           "addr": <binary IPv4 or IPv6 address>}])
+        remote_ip - underlay IP address of remote locator node
         """
         # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
         # namely, vl_api_eid_t
         eid = {"type": vpp_const.EID_MAC,
                "address": {"mac": mac_to_bytes(mac)}}
+        # Package the remote locator's underlay IP address into the
+        # "vl_api_address_t" type's format
+        if remote_ip.version == 4:
+            ip_addr = {"af": 0,
+                       "un": {"ip4": remote_ip.packed}}
+        else:
+            ip_addr = {"af": 1,
+                       "un": {"ip6": remote_ip.packed}}
+        remote_locator = {"priority": 1,
+                          "weight": 1,
+                          "ip_address": ip_addr}
         self.call_vpp('lisp_add_del_remote_mapping',
                       is_add=True,
                       vni=vni,
                       deid=eid,
-                      rlocs=[underlay],
+                      rlocs=[remote_locator],
                       rloc_num=1,
                       is_src_dst=False)
 
     def del_lisp_remote_mac(self, mac: mac_t, vni: vni_t) -> None:
         """Delete a LISP entry for a remote mac address.
+
+        Deletes all underlay IPs along with the eid.
 
         Arguments:-
         mac - remote mac_address

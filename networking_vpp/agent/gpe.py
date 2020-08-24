@@ -152,7 +152,7 @@ class GPEForwarder(object):
         # Clear IPv6 NDP Entries
         self.vpp.clear_lisp_ndp_entries(bridge_domain)
 
-    def ensure_remote_gpe_mapping(self, vni, mac, ip, remote_ip):
+    def ensure_remote_gpe_mapping(self, vni, mac, ip, remote_ip: str) -> None:
         """Ensures a remote GPE mapping
 
         A remote GPE mapping contains a remote mac-address of the instance,
@@ -161,18 +161,15 @@ class GPEForwarder(object):
         using the mac and ip address arguments. For Ipv6, an NDP entry is
         added.
         """
+
+        remote_ipaddr = ipaddress.ip_address(remote_ip)
+
         # Add a remote-map only if a corresponding local map is not present
         # GPE complains if a remote and a local mapping is present for a mac
         lset_mapping = self.gpe_map[gpe_lset_name]
         if (mac, vni) not in self.gpe_map['remote_map'] and mac not in \
                 lset_mapping['local_map']:
-            is_ip4 = 1 if ipnet(remote_ip).version == 4 else 0
-            remote_locator = {"is_ip4": is_ip4,
-                              "priority": 1,
-                              "weight": 1,
-                              "addr": self.vppf._pack_address(remote_ip)
-                              }
-            self.vpp.add_lisp_remote_mac(mac, vni, remote_locator)
+            self.vpp.add_lisp_remote_mac(mac, vni, remote_ipaddr)
             self.gpe_map['remote_map'][(mac, vni)] = remote_ip
             # Add a LISP ARP/NDP entry for the remote VM's IPv4/v6 address.
             # If an ARP or NDP entry exists in the BD, replace it.
