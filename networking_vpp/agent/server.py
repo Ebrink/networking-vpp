@@ -3286,8 +3286,10 @@ class PortWatcher(etcdutils.EtcdChangeWatcher):
         # agents that bind this segment using GPE
         if data['network_type'] == TYPE_GPE \
                 and self.data.gpe_listener is not None:
-            props = self.data.vppf.interfaces[port]
-            mac = props['mac']
+            # NB(onong): The VM's mac needs to be programmed in the remote
+            # mappings. Without this no communication is possible between VMs
+            # running on separate compute nodes.
+            mac = data['mac_address']
             for ip in [ip['ip_address'] for ip in data.get('fixed_ips')]:
                 self.data.gpe_listener.add_etcd_gpe_remote_mapping(
                     data['segmentation_id'], mac, ip)
