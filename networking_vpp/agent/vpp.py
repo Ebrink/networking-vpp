@@ -1530,7 +1530,7 @@ class VPPInterface(object):
                                        bd=bridge_domain).entries]:
             # Note(onong): In 20.05, mac and ip4 have been combined to a new
             # type, namely, vl_api_one_l2_arp_entry_t
-            arp_entry = {"mac": mac_to_bytes(mac), "ip4": ip4}
+            arp_entry = {"mac": mac.mac_binary, "ip4": ip4}
             self.call_vpp('one_add_del_l2_arp_entry',
                           is_add=0, entry=arp_entry, bd=bridge_domain)
 
