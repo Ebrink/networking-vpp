@@ -1600,7 +1600,7 @@ class VPPInterface(object):
         t = self.call_vpp('lisp_eid_table_dump')
         return [{'is_local': val.is_local,
                  'locator_set_index': val.locator_set_index,
-                 'mac': val.seid.address,
+                 'mac': val.seid.address.mac,
                  'vni': val.vni
                  } for val in t]
 

@@ -313,7 +313,7 @@ class GPEForwarder(object):
                     'vnis': set([val['vni'] for val in eids if
                                 val['locator_set_index'] == locator[
                                     'locator_set_index']]),
-                    'local_map': {val['mac']: val['vni'] for val
+                    'local_map': {(val['mac']).mac_string: val['vni'] for val
                                   in eids if val['is_local'] and
                                   val['locator_set_index'] == locator[
                                       'locator_set_index']}
