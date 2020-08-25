@@ -837,6 +837,9 @@ class VPPForwarder(object):
             tag = port_tag(uuid)
 
             props['bind_type'] = if_type
+            # NB(onong): In case the if_type is vhostuser then this is the
+            # neutron port's/VM's mac and it has implications for gpe networks
+            # so please be mindful before altering this
             props['mac'] = mac
 
             iface_idx = self.vpp.get_ifidx_by_tag(tag)
@@ -945,7 +948,6 @@ class VPPForwarder(object):
         self.ensure_interface_in_vpp_bridge(net_br_idx, iface_idx)
         # Ensure local mac to VNI mapping for GPE
         if net_type == TYPE_GPE:
-            mac = props['mac']
             LOG.debug('Adding local GPE mapping for seg_id:%s and mac:%s',
                       seg_id, mac)
             self.gpe.add_local_gpe_mapping(seg_id, mac)
@@ -3269,7 +3271,10 @@ class PortWatcher(etcdutils.EtcdChangeWatcher):
             self.data.binder.add_notification,
             port,
             binding_type,
-            None,  # We will set this closer to the actual vpp call
+            # NB(onong): VM's mac is needed to be programmed as the lisp local
+            # eid for data flow in gpe networks across compute nodes so please
+            # do not change the line below without proper consideration.
+            data['mac_address'],
             data['physnet'],
             data['network_type'],
             data['segmentation_id'],
