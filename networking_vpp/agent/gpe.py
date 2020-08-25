@@ -321,8 +321,9 @@ class GPEForwarder(object):
             self.gpe_map[locator['locator_set_name']] = data
         # Create the remote GPE: mac-address to underlay lookup mapping
         self.gpe_map['remote_map'] = {
-            (val['mac'], val['vni']): self.vpp.get_lisp_locator_ip(val[
-                'locator_set_index']) for val in eids if not val['is_local']
+            ((val['mac']).mac_string, val['vni']):
+                self.vpp.get_lisp_locator_ip(val['locator_set_index'])
+                for val in eids if not val['is_local']
             }
         LOG.debug('Successfully created a GPE lookup map by querying vpp %s',
                   self.gpe_map)
