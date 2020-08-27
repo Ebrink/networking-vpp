@@ -367,9 +367,9 @@ class VPPInterface(object):
 
     #############################
 
-    def create_vhostuser(self, ifpath, mac, tag,
+    def create_vhostuser(self, ifpath, tag,
                          qemu_user=None, qemu_group=None, is_server=False):
-        # type: (str, str, str, Optional[str], Optional[str], bool) -> int
+        # type: (str, str, Optional[str], Optional[str], bool) -> int
 
         # Note(onong): In VPP 20.01, the following API changes have happened:
         #      type of sock_filename changed from u8 to string
@@ -379,8 +379,6 @@ class VPPInterface(object):
                           sock_filename=ifpath,
                           renumber=False,
                           custom_dev_instance=0,
-                          use_custom_mac=True,
-                          mac_address=mac_to_bytes(mac),
                           tag=tag)
 
         if is_server and qemu_user is not None and qemu_group is not None:
