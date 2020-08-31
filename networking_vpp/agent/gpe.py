@@ -373,15 +373,16 @@ class GpeListener(object):
                 key_space, recursive=True)
 
             for child in rv.children:
-                m = re.match(key_space + '/([^/]+)' + '/([^/]+)' + '/([^/]+)',
-                             child.key)
+                m = re.match(key_space + '/([^/]+)' + '/([^/]+)', child.key)
                 if m:
                     hostname = m.group(1)
-                    mac = m.group(2)
-                    ip = m.group(3)
+                    ip = m.group(2)
+                    data = jsonutils.loads(child.value)
+                    mac = data["mac"]
+                    remote_ip = data["host"]
                     if self.is_valid_remote_map(vni, hostname):
                         self.gpe.ensure_remote_gpe_mapping(vni, mac, ip,
-                                                           child.value)
+                                                           remote_ip)
         except etcd.EtcdKeyNotFound:
             # The remote gpe key is not found. The agent may not have
             # added it to etcd yet. We will be told to read it later.
