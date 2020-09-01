@@ -1142,7 +1142,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             self.vpp.vpp.\
                 add_lisp_arp_entry.assert_called_once_with(
                     'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                    IPv4Address('10.1.1.2'))
+                    IPv4Address('10.1.1.2').packed)
 
     @mock.patch('networking_vpp.agent.gpe.GpeListener')
     @mock.patch('networking_vpp.agent.server.EtcdListener')
@@ -1186,7 +1186,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
             self.vpp.vpp.\
                 del_lisp_arp_entry.assert_called_once_with(
                     'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                    int(ip_address('10.1.1.2')))
+                    (ip_address('10.1.1.2')).packed)
 
     def test_replace_remote_gpe_arp_entry(self):
         """Test replacing a GPE ARP Entry.
@@ -1224,7 +1224,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.\
             replace_lisp_arp_entry.assert_called_once_with(
                 'fa:16:3e:47:2e:3c', mock_bridge_domain,
-                IPv4Address('10.1.1.2'))
+                IPv4Address('10.1.1.2').packed)
 
     @mock.patch(
         'networking_vpp.agent.server.VPPForwarder.acl_add_replace_on_host')

@@ -178,7 +178,7 @@ class GPEForwarder(object):
             # If an ARP or NDP entry exists in the BD, replace it.
             bridge_domain = self.bridge_idx_for_segment(vni)
             if ip and ipnet(ip).version == 4:
-                int_ip = ipaddr(ip)
+                int_ip = (ipaddr(ip)).packed
                 if not self.vpp.exists_lisp_arp_entry(bridge_domain, int_ip):
                     self.vpp.add_lisp_arp_entry(mac,
                                                 bridge_domain,
@@ -207,7 +207,7 @@ class GPEForwarder(object):
             # if it's present and the IP address is present
             bridge_domain = self.bridge_idx_for_segment(vni)
             if ip and ipnet(ip).version == 4:
-                int_ip = int(ipaddr(ip))
+                int_ip = (ipaddr(ip)).packed
                 if self.vpp.exists_lisp_arp_entry(bridge_domain, int_ip):
                     self.vpp.del_lisp_arp_entry(mac,
                                                 bridge_domain,
