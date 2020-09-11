@@ -1767,7 +1767,7 @@ class VPPForwarder(object):
         loopback_idx = self.vpp.get_bridge_bvi(bridge_idx)
         # Create a loopback BVI interface
         loopback_mac = router_data['loopback_mac']
-        if not loopback_idx:
+        if loopback_idx is None:
             # Create the loopback interface, but don't bring it UP yet
             loopback_idx = self.ensure_bridge_bvi(bridge_idx, loopback_mac)
         # Set the VRF for tenant BVI interfaces, if not already set

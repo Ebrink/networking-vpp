@@ -499,7 +499,7 @@ class VPPForwarderTestCase(base.BaseTestCase):
         m_network_on_host.return_value = {'bridge_domain_id': 'fake_dom_id'}
 
         with mock.patch.object(self.vpp.vpp, 'get_bridge_bvi',
-                               return_value=False):
+                               return_value=None):
             loopback_idx = self.vpp.ensure_router_interface_on_host(
                 port, router)
             self.vpp.vpp.get_ifidx_mac_address(loopback_idx)
