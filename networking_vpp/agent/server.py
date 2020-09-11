@@ -69,7 +69,7 @@ from oslo_reports import guru_meditation_report as gmr
 from oslo_reports import opts as gmr_opts
 from oslo_serialization import jsonutils
 from oslo_utils import netutils
-from typing import cast, Callable, Dict, TypeVar, Union, Set  # noqa
+from typing import cast, Callable, Dict, TypeVar, Union, Optional, Set  # noqa
 
 
 TYPE_GPE = nvpp_const.TYPE_GPE
@@ -90,17 +90,16 @@ reflexive_acls = True
 # threading.Semaphore.
 #
 # Our own, strictly eventlet, locking:
-_semaphores = defaultdict(eventlet.semaphore.Semaphore) \
-    # type: Dict[str, eventlet.semaphore.Semaphore]
+_semaphores: Dict[str, eventlet.semaphore.Semaphore] = \
+    defaultdict(eventlet.semaphore.Semaphore)
 
 
-def get_root_helper(conf):
+def get_root_helper(conf) -> str:
     """Root helper configured for privilege separation"""
     return conf.AGENT.root_helper
 
 
-def setup_privsep():
-    # type: () -> None
+def setup_privsep() -> None:
     """Use root helper (if present) to execute privileged commands"""
     priv_context.init(root_helper=shlex.split(get_root_helper(cfg.CONF)))
 
@@ -108,12 +107,10 @@ def setup_privsep():
 CV = TypeVar('CV', bound=Callable)
 
 
-def eventlet_lock(name):
-    # type: (str) -> Callable[[CV], CV]
+def eventlet_lock(name: str) -> Callable[[CV], CV]:
     sema = _semaphores[name]
 
-    def eventlet_lock_decorator(func):
-        # type: (CV) -> CV
+    def eventlet_lock_decorator(func: CV) -> CV:
         def func_wrap(*args, **kwargs):
             LOG.debug("Acquiring lock '%s' before executing %s" %
                       (name, func.__name__))
@@ -359,6 +356,7 @@ class VPPForwarder(object):
         self.deferred_delete_secgroups = set()
 
         # Enable the GPE forwarder programming, if required
+        self.gpe: Optional[gpe.GPEForwarder]
         if TYPE_GPE in cfg.CONF.ml2.type_drivers:
             self.gpe = gpe.GPEForwarder(self)
         else:
@@ -380,12 +378,12 @@ class VPPForwarder(object):
         # Here we create a mapping of sw_if_index to VPP ACL indices
         # so we can easily lookup the ACLs associated with the interface idx
         # sw_if_index: {"l34": [l34_acl_indxs], "l23": l23_acl_index }
-        self.port_vpp_acls = defaultdict(dict)
+        self.port_vpp_acls: Dict[vpp.if_idx_t, dict] = defaultdict(dict)
 
         # key: OpenStack port UUID; present when vhost-user is
         # connected and removed when we delete things.  May accumulate
         # any other VPP interfaces too, but that's harmless.
-        self.port_connected = set()
+        self.port_connected: Set[str] = set()
         self.vhost_ready_callback = None
         eventlet.spawn_n(self.vhost_notify_thread)
 
@@ -612,8 +610,10 @@ class VPPForwarder(object):
         self.vpp.set_interface_tag(ifidx, physnet_if_tag(physnet))
         return ifname, ifidx
 
-    def delete_network_bridge_on_host(self, net_type, bridge_domain_id,
-                                      uplink_if_idx):
+    def delete_network_bridge_on_host(
+            self, net_type: str,
+            bridge_domain_id: vpp.br_idx_t,
+            uplink_if_idx: vpp.if_idx_t) -> None:
         """Delete a bridge corresponding to a network from VPP
 
         Usable on restart - uses nothing but the data in VPP.
@@ -810,6 +810,9 @@ class VPPForwarder(object):
             # TODO(ijw): naming not obviously consistent with
             # Neutron's naming
             tap_name = get_tap_name(uuid)
+
+            # TODO(ijw) structured type
+            props: dict
 
             if if_type == 'tap':
                 bridge_name = get_bridge_name(uuid)
@@ -1704,7 +1707,9 @@ class VPPForwarder(object):
                   loopback_mac, loopback_idx)
         return loopback_mac
 
-    def ensure_bridge_bvi(self, bridge_idx, mac_address=None):
+    def ensure_bridge_bvi(self,
+                          bridge_idx: vpp.br_idx_t,
+                          mac_address: str = None) -> vpp.if_idx_t:
         """Ensure a BVI loopback interface for the bridge."""
         bvi_if_idx = self.vpp.get_bridge_bvi(bridge_idx)
         if not bvi_if_idx:
@@ -2504,6 +2509,7 @@ class EtcdListener(object):
         self.secgroup_enabled = cfg.CONF.SECURITYGROUP.enable_security_group
 
         # Add GPE key-watching, if required
+        self.gpe_listener: Optional[gpe.GpeListener]
         if TYPE_GPE in cfg.CONF.ml2.type_drivers:
             self.gpe_listener = gpe.GpeListener(self)
         else:
@@ -3111,6 +3117,8 @@ class EtcdListener(object):
         self.remote_group_key_space = LEADIN + "/global/remote_group"
         self.trunk_key_space = LEADIN + "/nodes/%s/trunks" % self.host
 
+        etcd_client: Optional[etcd.Client]
+        etcd_helper: Optional[etcdutils.EtcdHelper]
         etcd_client = self.client_factory.client()
         etcd_helper = etcdutils.EtcdHelper(etcd_client)
         # We need certain directories to exist so that we can write to
