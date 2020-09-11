@@ -45,7 +45,7 @@ class NetworkDriver(ABC):
         self.vppf = vppf
         self.vpp = vpp
 
-    def get_if_for_physnet(self, physnet: str) -> Tuple[str, int]:
+    def get_if_for_physnet(self, physnet: str) -> Tuple[str, vpp.if_idx_t]:
         intf, ifidx = self.vppf.get_if_for_physnet(physnet)
         if intf is None:
             LOG.error('Cannot create network because physnet '
