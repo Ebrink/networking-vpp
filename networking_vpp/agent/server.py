@@ -1679,8 +1679,7 @@ class VPPForwarder(object):
         external_net_type = floatingip_dict['external_net_type']
         external_segmentation_id = floatingip_dict['external_segmentation_id']
         external_network_data = self.net_driver.get_network(
-            (external_physnet, external_net_type, external_segmentation_id),
-            None)
+            external_physnet, external_net_type, external_segmentation_id)
         if external_network_data:
             physnet_ip_addrs = self.vpp.get_interface_ip_addresses(
                 external_network_data['if_uplink_idx'])
