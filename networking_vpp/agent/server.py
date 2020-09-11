@@ -69,7 +69,7 @@ from oslo_reports import guru_meditation_report as gmr
 from oslo_reports import opts as gmr_opts
 from oslo_serialization import jsonutils
 from oslo_utils import netutils
-from typing import cast, Callable, Dict, TypeVar, Union  # noqa
+from typing import cast, Callable, Dict, TypeVar, Union, Set  # noqa
 
 
 TYPE_GPE = nvpp_const.TYPE_GPE
@@ -552,17 +552,17 @@ class VPPForwarder(object):
         dirname = dirname.rstrip('/') + '/'
 
         while True:
-            opens = defaultdict(int)
+            opens: Dict[str, int] = defaultdict(int)
 
-            with open('/proc/net/unix') as file:
+            with open('/proc/net/unix') as content:
                 # Track unix sockets in vhost directory that are opened more
                 # than once
-                for f in file:
-                    # Problems with files with spaces in, though
-                    _, file = f.rsplit(' ', 1)
-                    if file.startswith(dirname):
-                        file = file[len(dirname):].rstrip("\n")
-                        opens[file] = opens[file] + 1
+                for f in content:
+                    # Problems with fnames with spaces in, though
+                    _, fname = f.rsplit(' ', 1)
+                    if fname.startswith(dirname):
+                        fname = fname[len(dirname):].rstrip("\n")
+                        opens[fname] = opens[fname] + 1
 
             # Report on any sockets that are open exactly twice (VPP + KVM)
             # (note list clone so that we can delete entries)
@@ -570,13 +570,13 @@ class VPPForwarder(object):
                 if opens[f] != 2:
                     del opens[f]
 
-            opens = set(opens.keys())
-            open_notifications = opens - self.port_connected
+            open_names: Set[str] = set(opens.keys())
+            open_notifications: Set[str] = open_names - self.port_connected
             # .. we don't have to notify the port drops, that's fine
 
             # Update this *before* making callbacks so that this register is up
             # to date
-            self.port_connected = opens
+            self.port_connected = open_names
             if self.vhost_ready_callback:
                 for uuid in open_notifications:
                     self.vhost_ready_callback(uuid)
