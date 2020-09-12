@@ -54,7 +54,6 @@ from networking_vpp.utils import file_monitor
 from networking_vpp import version
 
 import neutron_lib.constants as n_const
-from neutron_lib.utils import net as net_utils
 
 from neutron.agent.linux import bridge_lib
 from neutron.agent.linux import ip_lib
@@ -803,15 +802,6 @@ class VPPForwarder(object):
             # recreate it
             # TODO(ijw): idempotency
 
-            # Unfortunately call_vpp() expects a mac and we need to pass one.
-            # We will create a random mac if none is passed. We are setting
-            # base_mac from neutron, assuming neutron is the sole consumer of
-            # code at the moment. This is an assumption which might need a todo
-
-            if mac is None:
-                mac = net_utils.get_random_mac(
-                    cfg.CONF.ml2_vpp.vpp_base_mac.split(':'))
-
             LOG.debug('Creating port %s as type %s with mac %s',
                       uuid, if_type, mac)
 
@@ -857,9 +847,10 @@ class VPPForwarder(object):
                           (uuid, if_type))
 
                 if if_type == 'tap':
-                    iface_idx = self.vpp.create_tap(int_tap_name, mac, tag)
+                    iface_idx = self.vpp.create_tap(int_tap_name, mac=None,
+                                                    tag=tag)
                 elif if_type == 'vhostuser':
-                    iface_idx = self.vpp.create_vhostuser(path, mac, tag)
+                    iface_idx = self.vpp.create_vhostuser(path, tag)
 
             if if_type == 'tap':
                 # Plugtap interfaces belong in a kernel bridge, and we need
