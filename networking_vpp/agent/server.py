@@ -2432,6 +2432,22 @@ class VPPForwarder(object):
         #  src_port 547 and dst_port 546
         # Drop icmpv6 Router Advertisements from VMs.
         #  Allow other outgoing icmpv6 packets
+
+        # When packets are fragmented (as UCP(v6), ICMP(v6) and TCPv4 packets
+        # all can be, VPP will match any fragment against the first rule
+        # relating to that address and protocol.  It ignores things like ports
+        # and ICMP types because they aren't in the second and later fragments.
+        #
+        # If you want second and later fragments to get through, the first rule
+        # that matches them *must* be a 'permit' rule.
+        #
+        # In our case it only happens for ICMPv6; we add a permit rule on an
+        # invalid code to pre-empt the RA deny when matching fragments.
+
+        # For TCPv4/v6, and ICMPv4, we don't have deny rules in spoof SG. so we
+        # are good;
+        # For UDPv4/v6, we do have a permit rule of DHCPv4/v6, so we are good;
+        # For ICMPv6, we are adding a dummy permit rule to workaround this;
         egress_rules = [
             _compose_rule(1, 0, '0.0.0.0', 0, '0.0.0.0', 0,
                           17, 68, 68, 67, 67),
@@ -2441,6 +2457,12 @@ class VPPForwarder(object):
                           17, 67, 67, 68, 68),
             _compose_rule(0, 1, '::', 0, '::', 0,
                           17, 547, 547, 546, 546),
+            # Permits ICMPv6 fragments while not permitting (valid)
+            # packets (type 0 is invalid)
+            _compose_rule(1, 1, '::', 0, '::', 0,
+                          58, 0, 0, 0, 0),
+            # ... because this rule would otherwise match fragments, being
+            # the first rule, and would deny them
             _compose_rule(0, 1, '::', 0, '::', 0,
                           58, ICMP_RA, ICMP_RA, 0, 255),
             _compose_rule(1, 1, '::', 0, '::', 0,
