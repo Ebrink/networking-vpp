@@ -1508,7 +1508,7 @@ class VPPInterface(object):
 
         ipv4_address is an integer representation of the IPv4 address.
         """
-        return ipv4_address in [arp.ip4 for arp in
+        return ipv4_address in [arp.ip4.packed for arp in
                                 self.call_vpp('one_l2_arp_entries_get',
                                               bd=bridge_domain).entries]
 
