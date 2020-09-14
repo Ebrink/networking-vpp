@@ -67,7 +67,7 @@ def pairs(lst):
     i = iter(lst)
 
     while i:
-        yield i.next(), i.next()
+        yield next(i), next(i)
 
 
 def decode_addr(addr, is_ipv6):
