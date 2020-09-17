@@ -1740,25 +1740,25 @@ class VPPForwarder(object):
             seg_id = router_data['external_segmentation_id']
             net_type = router_data['external_net_type']
             physnet = router_data['external_physnet']
-            vrf = 0
-            is_inside = 0
+            vrf = vpp.DEFAULT_VRF
+            is_inside = False
             enable_snat = router_data['external_gateway_info']['enable_snat']
             external_gateway_ip = router_data['external_gateway_ip']
             # To support multiple IP addresses on a router port, add
             # the router to each of the subnets.
             gateway_ip = router_data['gateways'][0][0]
             prefixlen = router_data['gateways'][0][1]
-            is_ipv6 = router_data['gateways'][0][2]
+            is_ipv6 = bool(router_data['gateways'][0][2])
         else:
             seg_id = router_data['segmentation_id']
             net_type = router_data['net_type']
             physnet = router_data['physnet']
             vrf = router_data['vrf_id']
-            is_inside = 1
+            is_inside = True
             external_gateway_ip = None
             gateway_ip = router_data['gateway_ip']
             prefixlen = router_data['prefixlen']
-            is_ipv6 = router_data['is_ipv6']
+            is_ipv6 = bool(router_data['is_ipv6'])
         # Ensure the network exists on host and get the network data
         net_data = self.net_driver.ensure_network(physnet, net_type, seg_id)
         # Get the bridge domain id and ensure a BVI interface for it
@@ -1831,7 +1831,7 @@ class VPPForwarder(object):
         else:
             # Add a local VRF route if another external gateway exists
             if not is_inside and exists_gateway:
-                is_local = 1
+                is_local = True
                 ip_prefix_length = 32 if gw_ip_obj.version == 4 else 128
                 # Add a local IP route if it doesn't exist
                 self.vpp.add_ip_route(vrf=vrf,
@@ -2157,7 +2157,7 @@ class VPPForwarder(object):
                                      next_hop_address=None,
                                      next_hop_sw_if_index=None,
                                      is_ipv6=router['is_ipv6'],
-                                     is_local=1)
+                                     is_local=True)
             self.vpp.set_interface_ip(bvi_if_idx,
                                       local_ip, router['prefixlen'])
             # Set the router external interface corresponding to the local
@@ -2271,7 +2271,7 @@ class VPPForwarder(object):
         if loopback_idx and loopback_idx not in snat_interfaces:
             self.vpp.set_snat_on_interface(loopback_idx)
         if external_idx and external_idx not in snat_interfaces:
-            self.vpp.set_snat_on_interface(external_idx, is_inside=0)
+            self.vpp.set_snat_on_interface(external_idx, is_inside=False)
         #
         # For different tenants mapped to different VRFs, it is quite possible
         # that the same fixed IP addr is mapped to different floating IP addrs,
@@ -2364,7 +2364,7 @@ class VPPForwarder(object):
                     floatingip_dict['fixed_ip_address'],
                     floatingip_dict['floating_ip_address'],
                     floatingip_dict['tenant_vrf'],
-                    is_add=0)
+                    is_add=False)
             self.floating_ips.pop(floatingip)
         else:
             LOG.debug('router: floating ip address: %s not found to be '
