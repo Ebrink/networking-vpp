@@ -2104,18 +2104,27 @@ class VPPForwarder(object):
             local_gw_ips = [r['gateway_ip'] for
                             r in self.router_external_interfaces.values()
                             if r['is_local']]
-            for local_ip in self.vpp.get_local_ip_address(ext_intf_ip,
-                                                          router['is_ipv6'],
-                                                          router['vrf_id']):
+
+            # While, in theory, there may be multiple IPs on an interface,
+            # in practice, we only program one (and program additional
+            # IPs via a local route).
+
+            # TODO(ijw): this is a somewhat unclean way of removing IP
+            # addresses attached to VPP interfaces that are in the
+            # subnet of ext_intf_ip, I think.  Unclear if this is the
+            # right way to do that versus remembering the interface.
+            for ip in self.vpp.get_local_ip_address(ext_intf_ip,
+                                                    router['is_ipv6'],
+                                                    router['vrf_id']):
                 # Is the local_ip valid?
-                if local_ip in local_gw_ips:
+                if ip in local_gw_ips:
                     LOG.debug('Found a router external local_ip in VPP: %s',
-                              local_ip)
-                    local_ip = [local_ip]
+                              ip)
+                    local_ip = ip
                     break
             # For-else would mean no breaks i.e. no valid local_ips
             else:
-                local_ip = []
+                local_ip = None
         else:
             LOG.error("Router port:%s deletion error...port not found",
                       port_id)
@@ -2136,12 +2145,11 @@ class VPPForwarder(object):
                                      next_hop_address=None,
                                      next_hop_sw_if_index=None,
                                      is_ipv6=router['is_ipv6'],
-                                     is_local=1)
+                                     is_local=True)
         # External router is a loopback BVI. If a local route exists,
         # replace the BVI's IP address with its IP address.
         # Don't delete the SNAT.
-        elif is_external and len(local_ip) > 0:
-            local_ip = local_ip[0]
+        elif is_external and local_ip is not None:
             LOG.debug('delete_router_intf: replacing router loopback BVI IP '
                       'address %s with the local ip address %s',
                       router['gateway_ip'], local_ip)
