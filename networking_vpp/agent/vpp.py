@@ -675,9 +675,9 @@ class VPPInterface(object):
                       acl_index=acl_index)
 
     # TODO(ijw): typing; raw type from VPP is what?
-    def get_macip_acl_dump(self) -> List[macip_acl_rule_t]:
+    def get_macip_acls(self) -> List[Tuple[if_idx_t, macip_acl_idx_t]]:
         t = self.call_vpp('macip_acl_interface_get')
-        return t
+        return t.acls
 
     ########################################
 

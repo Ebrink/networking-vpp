@@ -2491,10 +2491,6 @@ class VPPForwarder(object):
         return {'ingress': ingress_rules,
                 'egress': egress_rules}
 
-    def get_macip_acl_dump(self):
-        """Get a dump of macip ACLs on the node"""
-        return self.vpp.get_macip_acl_dump()
-
 
 LEADIN = nvpp_const.LEADIN  # TODO(ijw): make configurable?
 
@@ -2917,14 +2913,14 @@ class EtcdListener(object):
         mac_ips = allowed_mac_ips + mac_ips + addr_pairs
         self.vppf.set_mac_ip_acl_on_vpp_port(mac_ips, sw_if_index)
 
-    def load_macip_acl_mapping(self):
+    def load_macip_acl_mapping(self) -> None:
         """Load the sw_if_index to mac_ip_acl index mappings on vpp.
 
         Populates self.vppf.port_vpp_acls :
                   {sw_if_index -> {'l23' : <macip_acl_index>}}
         """
         try:
-            macip_acls = self.vppf.get_macip_acl_dump().acls
+            macip_acls = self.vppf.vpp.get_macip_acls()
             # The acl position is the sw_if_index
             for sw_if_index, acl_index in enumerate(macip_acls):
                 if acl_index != 4294967295:  # Exclude invalid acl index
