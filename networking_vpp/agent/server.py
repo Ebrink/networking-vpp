@@ -1144,7 +1144,7 @@ class VPPForwarder(object):
         self.interfaces.pop(uuid)
 
     # TODO(ijw) this *really* needs typing with the return value structure.
-    def _to_acl_rule(self, r, d, a=2):
+    def _to_acl_rule(self, r, d):
         """Convert a SecurityGroupRule to VPP ACL rule.
 
         Arguments:
@@ -1158,16 +1158,15 @@ class VPPForwarder(object):
                                  'port_min',
                                  'port_max'])
         d - Direction:  0 ==> ingress, 1 ==> egress
-        a - Permit-Action: 1 == permit, 2 == reflexive;
         Default == 2
         Return: VPP-formatted ACL Rule
         """
         acl_rule = {}
-        # If reflexive is False a = 1
+        # a - Permit-Action: 1 == permit, 2 == reflexive;
         if not reflexive_acls:
             a = 1
         # Enable reflexive ACLs for all TCP/UDP and IP traffic
-        elif reflexive_acls and r.protocol in [6, 17, 0]:
+        elif r.protocol in [6, 17, 0]:
             a = 2
         else:
             a = 1  # Disable reflexive for other traffic such as ICMP etc.
