@@ -1273,13 +1273,18 @@ class VPPInterface(object):
             snat_local_ipaddresses.append(addr)
         return snat_local_ipaddresses
 
-    def clear_snat_sessions(self, ip_addr: ip_addr_t) -> None:
+    # TODO(ijw): this should not be trolling for NAT mappings in
+    # multiple VRFs: the IP may be used for more than one VM in
+    # different VRFs.  The input to this function should know which
+    # VRF it's thinking of.
+    def clear_snat_sessions(self, ip_addr: IPAddress) -> None:
         """Clear any dynamic NAT translations if present for the ip_addr."""
         user_vrf = None
         snat_users = self.call_vpp('nat44_user_dump')
+        # TODO(ijw): is this returning an ipaddress type now?  If so,
+        # we can remove the conversion call.
         for user in snat_users:
-            if ipaddress.IPv4Address(ip_addr) == ipaddress.IPv4Address(
-                    user.ip_address):
+            if ip_addr == ipaddress.IPv4Address(user.ip_address):
                 user_vrf = user.vrf_id
                 break
         # A NAT session exists if the user_vrf is set
@@ -1287,7 +1292,7 @@ class VPPInterface(object):
             # Note(onong): nat44_user_session_dump expects the binary IPv4
             # address and IPv4Address(ip_addr).packed works fine for python2 as
             # well as python3; no need for str(...)
-            packed_ip_addr = ipaddress.IPv4Address(ip_addr).packed
+            packed_ip_addr = ip_addr.packed
             user_sessions = self.call_vpp('nat44_user_session_dump',
                                           ip_address=packed_ip_addr,
                                           vrf_id=user_vrf
@@ -1310,20 +1315,12 @@ class VPPInterface(object):
         return self.call_vpp('nat44_static_mapping_dump')
 
     def set_snat_static_mapping(self,
-                                local_ip: ip_addr_t, external_ip: ip_addr_t,
+                                local_ip: IPAddress, external_ip: IPAddress,
                                 tenant_vrf: vrf_idx_t,
                                 is_add: bool = True) -> None:
-        # Note(onong): watch out for py3
-        # In py3 str() will give unicode and not bytes and the API expects a
-        # bytes like object. local_ip and external_ip are coming from neutron
-        # and they are of type unicode. We need to convert it into bytes like
-        # object. str() works on py27 bcoz str and bytes are the same. But on
-        # py3, str is unicode so this will need changes in py3
-        local_ip = ipaddress.IPv4Address(local_ip).packed
-        external_ip = ipaddress.IPv4Address(external_ip).packed
         self.call_vpp('nat44_add_del_static_mapping',
-                      local_ip_address=local_ip,
-                      external_ip_address=external_ip,
+                      local_ip_address=local_ip.packed,
+                      external_ip_address=external_ip.packed,
                       external_sw_if_index=0xFFFFFFFF,  # -1 = Not used
                       local_port=0,     # 0 = ignore
                       external_port=0,  # 0 = ignore

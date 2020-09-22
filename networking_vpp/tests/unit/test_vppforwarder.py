@@ -840,11 +840,11 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.vpp.get_interface_vrf.assert_called_with(1)
         self.assertEqual(self.vpp.vpp.set_snat_static_mapping.call_count, 1)
         self.vpp.vpp.set_snat_static_mapping.assert_called_once_with(
-            floatingip_dict['fixed_ip_address'],
-            floatingip_dict['floating_ip_address'],
+            ip_address(floatingip_dict['fixed_ip_address']),
+            ip_address(floatingip_dict['floating_ip_address']),
             floatingip_dict['tenant_vrf'])
         self.vpp.vpp.clear_snat_sessions.assert_called_once_with(
-            floatingip_dict['fixed_ip_address'])
+            ip_address(floatingip_dict['fixed_ip_address']))
 
     def test_create_floatingip_on_vpp_existing_entry(self):
         """Test create floatingip processing with existing indexes.
@@ -903,8 +903,8 @@ class VPPForwarderTestCase(base.BaseTestCase):
         self.vpp.disassociate_floatingip(floating_ip)
 
         self.vpp.vpp.set_snat_static_mapping.assert_called_once_with(
-            floatingip_dict['fixed_ip_address'],
-            floatingip_dict['floating_ip_address'],
+            ip_address(floatingip_dict['fixed_ip_address']),
+            ip_address(floatingip_dict['floating_ip_address']),
             floatingip_dict['tenant_vrf'],
             is_add=0)
         self.assertIsNone(self.vpp.floating_ips.get(floating_ip))

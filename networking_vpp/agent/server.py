@@ -2307,10 +2307,10 @@ class VPPForwarder(object):
         if add_nat_mapping:
             LOG.debug("Router: setting 1:1 SNAT %s:%s in tenant_vrf:%s",
                       fixedip_addr, floatingip_addr, tenant_vrf)
-            self.vpp.set_snat_static_mapping(fixedip_addr, floatingip_addr,
+            self.vpp.set_snat_static_mapping(localip, extip,
                                              tenant_vrf)
             # Clear any dynamic NAT sessions for the 1:1 NAT to take effect
-            self.vpp.clear_snat_sessions(fixedip_addr)
+            self.vpp.clear_snat_sessions(localip)
             self.floating_ips[floatingip]['tenant_vrf'] = tenant_vrf
             self.floating_ips[floatingip]['state'] = True
             LOG.debug('Router: Associated floating IP: %s',
@@ -2377,8 +2377,8 @@ class VPPForwarder(object):
             snat_local_ipaddresses = self.vpp.get_snat_local_ipaddresses()
             if floatingip_dict['fixed_ip_address'] in snat_local_ipaddresses:
                 self.vpp.set_snat_static_mapping(
-                    floatingip_dict['fixed_ip_address'],
-                    floatingip_dict['floating_ip_address'],
+                    ipaddr(floatingip_dict['fixed_ip_address']),
+                    ipaddr(floatingip_dict['floating_ip_address']),
                     floatingip_dict['tenant_vrf'],
                     is_add=False)
             self.floating_ips.pop(floatingip)
