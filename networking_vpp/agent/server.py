@@ -1703,16 +1703,9 @@ class VPPForwarder(object):
 
         return sub_if
 
-    def _get_loopback_mac(self, loopback_idx):
-        """Returns the mac address of the loopback interface."""
-        loopback_mac = self.vpp.get_ifidx_mac_address(loopback_idx)
-        LOG.debug("mac address %s of the router BVI loopback idx: %s",
-                  loopback_mac, loopback_idx)
-        return loopback_mac
-
     def ensure_bridge_bvi(self,
                           bridge_idx: vpp.br_idx_t,
-                          mac_address: str = None) -> vpp.if_idx_t:
+                          mac_address: vpp.mac_str_t = None) -> vpp.if_idx_t:
         """Ensure a BVI loopback interface for the bridge."""
         bvi_if_idx = self.vpp.get_bridge_bvi(bridge_idx)
         if not bvi_if_idx:
@@ -1773,7 +1766,7 @@ class VPPForwarder(object):
         # Ensure a BVI (i.e. A loopback) for the bridge domain
         loopback_idx = self.vpp.get_bridge_bvi(bridge_idx)
         # Create a loopback BVI interface
-        loopback_mac = router_data['loopback_mac']
+        loopback_mac = vpp.mac_str_t(router_data['loopback_mac'])
         if loopback_idx is None:
             # Create the loopback interface, but don't bring it UP yet
             loopback_idx = self.ensure_bridge_bvi(bridge_idx, loopback_mac)

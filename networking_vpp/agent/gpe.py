@@ -18,12 +18,15 @@ import ipaddress
 import re
 import sys
 
+from networking_vpp.agent.vpp import mac_str_t
 from networking_vpp import constants as nvpp_const
 from networking_vpp import etcdutils
 
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
+
+from typing import Dict
 
 import neutron_lib.constants as n_const
 
@@ -65,7 +68,7 @@ class GPEForwarder(object):
         # Will be set when we ensure GPE link
         self.gpe_underlay_addr = None
         # keeps track of gpe locators and mapping info
-        self.gpe_map = {'remote_map': {}}
+        self.gpe_map: Dict[str, dict] = {'remote_map': {}}
 
     def ensure_gpe_link(self):
         """Ensures that the GPE uplink interface is present and configured.
@@ -149,7 +152,9 @@ class GPEForwarder(object):
         # Clear IPv6 NDP Entries
         self.vpp.clear_lisp_ndp_entries(bridge_domain)
 
-    def ensure_remote_gpe_mapping(self, vni, mac, ip, remote_ip: str) -> None:
+    def ensure_remote_gpe_mapping(self, vni,
+                                  mac: mac_str_t, ip,
+                                  remote_ip: str) -> None:
         """Ensures a remote GPE mapping
 
         A remote GPE mapping contains a remote mac-address of the instance,
@@ -192,7 +197,7 @@ class GPEForwarder(object):
                                                     bridge_domain,
                                                     ip6)
 
-    def delete_remote_gpe_mapping(self, vni, mac, ip=None):
+    def delete_remote_gpe_mapping(self, vni, mac: mac_str_t, ip=None):
         """Delete a remote GPE vni to mac mapping."""
         if (mac, vni) in self.gpe_map['remote_map']:
             self.vpp.del_lisp_remote_mac(mac, vni)
@@ -213,7 +218,7 @@ class GPEForwarder(object):
                                                 bridge_domain,
                                                 ip6)
 
-    def add_local_gpe_mapping(self, vni, mac):
+    def add_local_gpe_mapping(self, vni, mac: mac_str_t):
         """Add a local GPE mapping between a mac and vni."""
         lset_mapping = self.gpe_map[gpe_lset_name]
         # If a remote map exists, clear it as local map takes precedence
@@ -229,7 +234,7 @@ class GPEForwarder(object):
             self.vpp.add_lisp_local_mac(mac, vni, gpe_lset_name)
             lset_mapping['local_map'][mac] = vni
 
-    def delete_local_gpe_mapping(self, vni, mac):
+    def delete_local_gpe_mapping(self, vni, mac: mac_str_t):
         lset_mapping = self.gpe_map[gpe_lset_name]
         if mac in lset_mapping['local_map']:
             self.vpp.del_lisp_local_mac(mac, vni, gpe_lset_name)
@@ -373,7 +378,7 @@ class GpeListener(object):
                     hostname = m.group(1)
                     ip = m.group(2)
                     data = jsonutils.loads(child.value)
-                    mac = data["mac"]
+                    mac = mac_str_t(data["mac"])
                     remote_ip = data["host"]
                     if self.is_valid_remote_map(vni, hostname):
                         self.gpe.ensure_remote_gpe_mapping(vni, mac, ip,
@@ -405,7 +410,7 @@ class GpeListener(object):
             data = router_ports[port]
             vxlan_bound = data['net_type'] == n_const.TYPE_VXLAN
             seg_id = data['segmentation_id']
-            mac_addr = data['mac_address']
+            mac_addr = mac_str_t(data['mac_address'])
             ip_addr = data['gateway_ip']
             # Master --> Backup state transition
             # Delete local GPE mapping as we no longer own this mac-address

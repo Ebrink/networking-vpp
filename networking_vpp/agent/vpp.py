@@ -47,7 +47,8 @@ macip_acl_idx_t = NewType('macip_acl_idx_t', int)
 macip_acl_rule_t = dict  # an acl rule definition
 ip_addr_t = bytes
 ip_addr_str_t = str
-mac_t = str
+mac_t = NewType('mac_t', bytes)
+mac_str_t = NewType('mac_str_t', str)
 vni_t = int
 lisp_dp_table_t = int
 lisp_ls_idx_t = NewType('lisp_ls_idx_t', int)
@@ -59,12 +60,15 @@ route_path_t = dict
 DEFAULT_VRF = vrf_idx_t(0)
 
 
-def mac_to_bytes(mac: str) -> bytes:
+def mac_to_bytes(mac: mac_str_t) -> mac_t:
     # py3 note:
     # TODO(onong): PAPI has introduced a new macaddress object which seemingly
     # takes care of conversion to/from MAC addr to string.
     # TODO(onong): move to common file in phase 2
-    return bytes.fromhex(mac.replace(':', ''))
+    return mac_t(bytes.fromhex(mac.replace(':', '')))
+
+
+DEFAULT_MAC = mac_to_bytes(mac_str_t('00:00:00:00:00:00'))
 
 
 def fix_string(s: bytes) -> str:
@@ -318,11 +322,11 @@ class VPPInterface(object):
                 return iface['sw_if_idx']
         return None
 
-    def get_ifidx_mac_address(self, ifidx: if_idx_t) -> Optional[bytes]:
+    def get_ifidx_mac_address(self, ifidx: if_idx_t) -> Optional[mac_t]:
 
         for iface in self.get_interfaces():
             if iface['sw_if_idx'] == ifidx:
-                return iface['mac']
+                return mac_t(iface['mac'].mac_binary)
         return None
 
     def get_ifidx_by_tag(self, tag: str) -> Optional[if_idx_t]:
@@ -353,13 +357,13 @@ class VPPInterface(object):
 
     ########################################
 
-    def create_tap(self, ifname: str, mac: Optional[str] = None,
+    def create_tap(self, ifname: str, mac: Optional[mac_str_t] = None,
                    tag: str = "") -> if_idx_t:
         if mac is not None:
             mac_bytes = mac_to_bytes(mac)
             use_random_mac = False
         else:
-            mac_bytes = mac_to_bytes('00:00:00:00:00:00')
+            mac_bytes = DEFAULT_MAC
             use_random_mac = True
 
         # Note(onong): In VPP 20.01, the following API changes have happened:
@@ -722,7 +726,7 @@ class VPPInterface(object):
 
     ########################################
 
-    def create_loopback(self, mac_address_in: Optional[str] = None) \
+    def create_loopback(self, mac_address_in: Optional[mac_str_t] = None) \
         -> if_idx_t:
         # Create a loopback interface to act as a BVI
         if mac_address_in is not None:
@@ -1362,7 +1366,7 @@ class VPPInterface(object):
                       dp_table=bridge_domain,
                       is_l2=True)
 
-    def add_lisp_local_mac(self, mac: mac_t, vni: vni_t,
+    def add_lisp_local_mac(self, mac: mac_str_t, vni: vni_t,
                            locator_set_name: str) -> None:
         """Add a local mac address to VNI association in LISP"""
         # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
@@ -1375,7 +1379,7 @@ class VPPInterface(object):
                       locator_set_name=locator_set_name,
                       vni=vni)
 
-    def del_lisp_local_mac(self, mac: mac_t, vni: vni_t,
+    def del_lisp_local_mac(self, mac: mac_str_t, vni: vni_t,
                            locator_set_name: str) -> None:
         """Delete a local mac address to VNI association in LISP"""
         # Note(onong): In 20.05, eid and eid_type are subsumed in a new type,
@@ -1388,7 +1392,7 @@ class VPPInterface(object):
                       locator_set_name=locator_set_name,
                       vni=vni)
 
-    def add_lisp_remote_mac(self, mac: mac_t, vni: vni_t,
+    def add_lisp_remote_mac(self, mac: mac_str_t, vni: vni_t,
                             remote_ip: IPAddress) -> None:
         """Add a LISP entry for a remote mac address to the underlay IP.
 
@@ -1420,7 +1424,7 @@ class VPPInterface(object):
                       rloc_num=1,
                       is_src_dst=False)
 
-    def del_lisp_remote_mac(self, mac: mac_t, vni: vni_t) -> None:
+    def del_lisp_remote_mac(self, mac: mac_str_t, vni: vni_t) -> None:
         """Delete a LISP entry for a remote mac address.
 
         Deletes all underlay IPs along with the eid.
@@ -1479,7 +1483,7 @@ class VPPInterface(object):
                       locator_set_name=locator_set_name,
                       sw_if_index=sw_if_index)
 
-    def add_lisp_arp_entry(self, mac: mac_t, bridge_domain: br_idx_t,
+    def add_lisp_arp_entry(self, mac: mac_str_t, bridge_domain: br_idx_t,
                            ipv4_address: ip_addr_t) -> None:
         """Adds a static ARP entry to LISP.
 
@@ -1494,7 +1498,7 @@ class VPPInterface(object):
                       bd=bridge_domain
                       )
 
-    def add_lisp_ndp_entry(self, mac: mac_t, bridge_domain: br_idx_t,
+    def add_lisp_ndp_entry(self, mac: mac_str_t, bridge_domain: br_idx_t,
                            ipv6_address: ip_addr_t) -> None:
         """Adds a static IPv6 NDP entry to LISP.
 
@@ -1509,7 +1513,7 @@ class VPPInterface(object):
                       bd=bridge_domain
                       )
 
-    def del_lisp_arp_entry(self, mac: mac_t, bridge_domain: br_idx_t,
+    def del_lisp_arp_entry(self, mac: mac_str_t, bridge_domain: br_idx_t,
                            ipv4_address: ip_addr_t) -> None:
         """Removes a static ARP entry from LISP.
 
@@ -1524,7 +1528,7 @@ class VPPInterface(object):
                       bd=bridge_domain
                       )
 
-    def del_lisp_ndp_entry(self, mac: mac_t, bridge_domain: br_idx_t,
+    def del_lisp_ndp_entry(self, mac: mac_str_t, bridge_domain: br_idx_t,
                            ipv6_address: ip_addr_t) -> None:
         """Removes a static IPv6 NDP entry from LISP.
 
@@ -1539,7 +1543,7 @@ class VPPInterface(object):
                       bd=bridge_domain
                       )
 
-    def replace_lisp_arp_entry(self, mac: mac_t, bridge_domain: br_idx_t,
+    def replace_lisp_arp_entry(self, mac: mac_str_t, bridge_domain: br_idx_t,
                                ipv4_address: bytes) -> None:
         """Replaces the LISP ARP entry in a bridge domain for the IP address.
 
@@ -1558,7 +1562,7 @@ class VPPInterface(object):
         # Add the new ARP entry
         self.add_lisp_arp_entry(mac, bridge_domain, ipv4_address)
 
-    def replace_lisp_ndp_entry(self, mac: mac_t, bridge_domain: br_idx_t,
+    def replace_lisp_ndp_entry(self, mac: mac_str_t, bridge_domain: br_idx_t,
                                ipv6_address: ip_addr_t) -> None:
         """Replaces the LISP NDP entry in a bridge domain for the v6 address.
 
