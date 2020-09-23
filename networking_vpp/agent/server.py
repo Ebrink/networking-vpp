@@ -32,7 +32,7 @@ from collections import defaultdict
 from collections import namedtuple
 import etcd
 import eventlet.semaphore
-import ipaddress
+from ipaddress import ip_address, ip_interface, ip_network
 import os
 import re
 import shlex
@@ -121,31 +121,6 @@ def eventlet_lock(name: str) -> Callable[[CV], CV]:
         return cast(CV, func_wrap)
     return eventlet_lock_decorator
 
-
-# TODO(onong): move to common file in phase 2
-# TODO(ijw): or remove, since py3 doesn't need the unicode fixup.
-def ipnet(ip):
-    # type: (str) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
-    return ipaddress.ip_network(ip)
-
-
-def ipnet_loose(ip, pfxlen):
-    # type: (str, int) -> Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
-    # Will make a network within which this address resides, even
-    # if it's not given the network address.
-    return ipaddress.ip_network(u'%s/%d' %
-                                (ip, pfxlen), strict=False)
-
-
-def ipaddr(ip):
-    # type: (str) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-    return ipaddress.ip_address(ip)
-
-
-def ipint(ip):
-    # type: (str) -> Union[ipaddress.IPv4Interface, ipaddress.IPv6Interface]
-    # input: 1.2.3.4/24 e.g.
-    return ipaddress.ip_interface(ip)
 
 ######################################################################
 
@@ -1517,7 +1492,7 @@ class VPPForwarder(object):
 
         def _get_ip_version(ip):
             """Return the IP Version i.e. 4 or 6"""
-            return ipnet(ip).version
+            return ip_network(ip).version
 
         def _get_ip_prefix_length(ip):
             """Return the IP prefix length value
@@ -1529,7 +1504,7 @@ class VPPForwarder(object):
             i.e. 32 if IPv4 and 128 if IPv6
             if "ip" is an ip_network return its prefix_length
             """
-            return ipnet(ip).prefixlen
+            return ip_network(ip).prefixlen
 
         src_mac_mask = _pack_mac('FF:FF:FF:FF:FF:FF')
         mac_ip_rules = []
@@ -1644,7 +1619,7 @@ class VPPForwarder(object):
                  an IPv4 or IPv6 network with prefix_length e.g. 1.1.1.0/24
         """
         # Works for both addresses and the net address of masked networks
-        return ipnet(ip_addr).network_address.packed
+        return ip_network(ip_addr).network_address.packed
 
     def _get_snat_indexes(self, floatingip_dict):
         """Return the internal and external interface indices for SNAT.
@@ -1816,7 +1791,7 @@ class VPPForwarder(object):
                 self.gpe.add_local_gpe_mapping(seg_id, loopback_mac)
         # Set the gateway IP address on the BVI interface, if not already set
         addresses = self.vpp.get_interface_ip_addresses(loopback_idx)
-        gw_ipif = ipaddress.ip_interface((gateway_ip, prefixlen,))
+        gw_ipif = ip_interface((gateway_ip, prefixlen,))
         # Is there another gateway ip_addr set on this external loopback?
         if not is_inside:
             # Any address other than the one we're thinking of?
@@ -1916,7 +1891,7 @@ class VPPForwarder(object):
 
     def _get_ip_network(self, gateway_ip, prefixlen):
         """Returns the IP network for the gateway in CIDR form."""
-        return str(ipint(gateway_ip + "/" + str(prefixlen)).network)
+        return str(ip_interface(gateway_ip + "/" + str(prefixlen)).network)
 
     def default_route_in_default_vrf(self, router_dict, is_add=True):
         # ensure that default route in default VRF is present
@@ -1998,9 +1973,8 @@ class VPPForwarder(object):
                     #
                     # Note(onong): Do not set IPv6 default gateway to an IPv4
                     # external gateway
-                    ext_ip = ipaddr(external_gateway_ip)
-                    if (is_ipv6 and not isinstance(ext_ip,
-                                                   ipaddress.IPv6Address)):
+                    ext_ip = ip_address(external_gateway_ip)
+                    if is_ipv6 and not ext_ip.version != 6:
                         LOG.info('Not setting IPv6 default route via an IPv4'
                                  ' external gateway')
                     else:
@@ -2021,9 +1995,8 @@ class VPPForwarder(object):
                     #
                     # Note(onong): Do not export an IPv4 external network
                     # into an IPv6 VRF.
-                    ext_net = ipnet(ext_network)
-                    if (is_ipv6 and not isinstance(ext_net,
-                                                   ipaddress.IPv6Network)):
+                    ext_net = ip_network(ext_network)
+                    if is_ipv6 and ext_net.version != 6:
                         LOG.info('Not exporting IPv4 external network into '
                                  'tenant\'s IPv6 VRF')
                     else:
@@ -2042,9 +2015,8 @@ class VPPForwarder(object):
                     #
                     # Note(onong): Do not export an IPv4 internal network
                     # into an IPv6 external VRF.
-                    int_net = ipnet(int_network)
-                    if (is_ipv6 and not isinstance(int_net,
-                                                   ipaddress.IPv6Network)):
+                    int_net = ip_network(int_network)
+                    if is_ipv6 and int_net.version != 6:
                         LOG.info('Not exporting tenant\'s IPv4 internal '
                                  'network into IPv6 external VRF')
                     else:
@@ -2161,8 +2133,8 @@ class VPPForwarder(object):
             if bvi_if_idx is not None:
                 self.vpp.del_interface_ip(
                     bvi_if_idx,
-                    ipaddress.ip_interface((router['gateway_ip'],
-                                            router['prefixlen'],)))
+                    ip_interface((router['gateway_ip'],
+                                  router['prefixlen'],)))
             # Delete the local route
             prefixlen = 128 if router['is_ipv6'] else 32
             self.vpp.delete_ip_route(vrf=router['vrf_id'],
@@ -2175,12 +2147,12 @@ class VPPForwarder(object):
             if bvi_if_idx is not None:
                 self.vpp.set_interface_ip(
                     bvi_if_idx,
-                    ipaddress.ip_interface((local_ip, router['prefixlen'],)))
+                    ip_interface((local_ip, router['prefixlen'],)))
             # Set the router external interface corresponding to the local
             # route as non-local.
             for router in self.router_external_interfaces.values():
-                if ipaddr(router['gateway_ip']) == \
-                    ipaddr(local_ip):
+                if ip_address(router['gateway_ip']) == \
+                    ip_address(local_ip):
                     router['is_local'] = 0
                     LOG.debug('Router external %s is no longer a local '
                               'route but now assigned to the BVI', router)
@@ -2228,8 +2200,8 @@ class VPPForwarder(object):
                     # Dont' delete the BVI, only remove one IP from it
                     self.vpp.del_interface_ip(
                         bvi_if_idx,
-                        ipaddress.ip_interface((router['gateway_ip'],
-                                                router['prefixlen'],)))
+                        ip_interface((router['gateway_ip'],
+                                      router['prefixlen'],)))
                 else:
                     # Last subnet assigned, delete the interface
                     self.vpp.delete_loopback(bvi_if_idx)
@@ -2300,7 +2272,8 @@ class VPPForwarder(object):
         #
         # So, we check for (localip, extip, tenenat_vrf) in VPP before creating
         # the mapping.
-        (localip, extip) = (ipaddr(fixedip_addr), ipaddr(floatingip_addr))
+        (localip, extip) = (ip_address(fixedip_addr),
+                            ip_address(floatingip_addr))
         add_nat_mapping = True
         for m in self.vpp.get_snat_static_mappings():
             if (localip == m.local_ip_address and
@@ -2379,8 +2352,8 @@ class VPPForwarder(object):
             snat_local_ipaddresses = self.vpp.get_snat_local_ipaddresses()
             if floatingip_dict['fixed_ip_address'] in snat_local_ipaddresses:
                 self.vpp.set_snat_static_mapping(
-                    ipaddr(floatingip_dict['fixed_ip_address']),
-                    ipaddr(floatingip_dict['floating_ip_address']),
+                    ip_address(floatingip_dict['fixed_ip_address']),
+                    ip_address(floatingip_dict['floating_ip_address']),
                     floatingip_dict['tenant_vrf'],
                     is_add=False)
             self.floating_ips.pop(floatingip)
@@ -2817,7 +2790,7 @@ class EtcdListener(object):
                     (ip, prefix_length) for port in
                     self.vppf.remote_group_ports[remote_group]
                     for ip in self.vppf.port_ips[port]
-                    if ipnet(ip).version == ip_version]
+                    if ip_network(ip).version == ip_version]
                 LOG.debug("remote_group: vppf.remote_group_ports:%s",
                           self.vppf.remote_group_ports
                           )
@@ -2838,7 +2811,9 @@ class EtcdListener(object):
 
             rules = []
             for ip_addr, ip_prefix_len in remote_ip_prefixes:
-                net = ipnet_loose(ip_addr, int(ip_prefix_len))
+                # OpenStack should provide a network address here, but
+                # doesn't correctly validate input.
+                net = ip_interface((ip_addr, int(ip_prefix_len),)).network
                 packed_addr = net.network_address.packed
                 rules.append(SecurityGroupRule(r['is_ipv6'],
                                                packed_addr,
