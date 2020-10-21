@@ -1956,7 +1956,7 @@ class VPPForwarder(object):
                     # Note(onong): Do not set IPv6 default gateway to an IPv4
                     # external gateway
                     ext_ip = ip_address(external_gateway_ip)
-                    if is_ipv6 and not ext_ip.version != 6:
+                    if is_ipv6 and ext_ip.version != 6:
                         LOG.info('Not setting IPv6 default route via an IPv4'
                                  ' external gateway')
                     else:
