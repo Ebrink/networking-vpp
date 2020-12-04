@@ -605,28 +605,57 @@ we will be increasing the coverage of the unit tests, as well as
 enhancing the types of system/integration tests that we run, e.g.
 negative testing, compatibility testing, etc.
 
-What's new in the 20.05.1 release?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What's new in the 20.09-rc0 release?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the 20.05.1 release,
+In this release we've,
 
-- We've added OpenStack Train release compatibility.
+- Enhanced the type-driver to support pluggable network types by
+  providing a framework that loads and registers any network type with
+  networking-vpp. Converted network types to stevedore drivers.
+  Loaded drivers are now configurable (with network type == entry
+  point name), and network_interface.py loads them.
 
-- We've optimized GPE VNI allocation in the Neutron DB. Instead of storing
-  the entire range of GPE VNIs, the GPE type-driver now dynamically
-  computes a valid VNI at network creation time and stores only the allocated
-  VNIs in Neutron DB.
+- Fixed RuntimeError: dictionary changed size during iteration
+  when processing the subport/trunk port relationship.
 
-- We've made corrections to GPE APIs. All of the GPE API changes could not
-  be tested for correctness in the previous release due to various issues.
-  We've added a patch that makes the necessary GPE API fixes.
+- Removed read_timeout parameter for VPP connect API.
 
-- We've changed the API to create sub-interfaces. The new API call "create_subif"
-  will keep the original behavior, but will add the support for Q-in-Q (i.e
-  inner & outer VLAN Tags).
+- Brought hacking up to spec. Our earlier version of hacking was ancient,
+  and it loaded a pep8 check that is both very inconsistent in reporting
+  errors and had weaker constraints.
 
-- We've made TaaS fixes to support network type changes in the 20.05 release.
+- Fixed DHCP bridge cleanup failure. The ML2 agent failed to cleanup DHCP
+  bridges intermittently, leaving behind several bridges on the system
+  over a period of time.
+
+- Removed Six as it is Python 2 and 3 compatibility. It is no longer
+  needed now that we're purely py3.
+
+- Cleaned up asynchronous event related code as the ML2 agent uses
+  synchronous mode API calls and it does not solicit any async
+  notifications/events from VPP.
+
+- Cleaned up compat to stop importing things that no longer need help because
+  they're consistent across all OpenStack versions. We support really Queens+
+  at this point.
+ 
+- Fixed VXLAN GPE issues such as,
+   a) lisp l2 arp entry fails to delete.
+   b) no data flow across compute nodes due to incorrect lisp remote-mapping.
+
+- Added several type annotations in server.py, gpe.py and vpp.py modules.
+
+- Simplified _to_acl_rule.
+
+- Fixed dump-tags and dump-acls script.
+
+- Fixed security group encodings. VPP 20.05 changed the API definition of
+  acl_add_replace() and its macip equivalent. Fixed to support it.
+
+- Fixed a bug in IPv6 default route setting that produced the error,
+  TypeError: object of type 'IPv4Address' has no len().
 
 - We've been doing the usual round of bug fixes, clean-ups and updates - the
-  code will work with VPP 20.05/20.05.1 releases, the OpenStack Train/Stein
-  releases & Python 3.
+  code will work with VPP 20.09, the OpenStack Ussuri/Train/Stein releases
+  & Python 3.
