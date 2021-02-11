@@ -169,7 +169,7 @@ class VPPInterface(object):
         # which invokes the user registered callback and it is set to True by
         # default. Since we use synchronous mode for the API calls we should
         # be setting it to False.
-        self._vpp = vpp_papi.VPP(jsonfiles, async_thread=False)
+        self._vpp = vpp_papi.VPPApiClient(jsonfiles, async_thread=False)
 
         args = {}
         if vpp_cmd_queue_len is not None:
